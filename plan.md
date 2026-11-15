@@ -228,14 +228,14 @@ Verificado y desplegado:
 - `flutter analyze` → sin incidencias.
 - `flutter test` → 10 pruebas superadas.
 - `flutter build web --release --no-wasm-dry-run --dart-define-from-file=firebase.web.json` → compilación correcta.
-- Proyecto Firebase `tarjet-fidel-app` creado y app web registrada.
+- Proyecto Firebase de referencia creado y app web registrada.
 - Credenciales reales en `firebase.web.json` (ignorado por git); `lib/firebase_options.dart` las lee por `dart-define`.
 - Authentication (correo/contraseña) activo.
 - Firestore (base con nombre `default`) con reglas e índices desplegados.
 - Remote Config `trial_expiry_date` publicado (versión 1).
-- Administrador `bendezulagosj@gmail.com` con documento `admins/{uid}`; inicio de sesión verificado.
+- Administrador de referencia con documento `admins/{uid}`; inicio de sesión verificado.
 - `config/main` sembrada; `counters/clients` en 0.
-- Hosting en https://tarjet-fidel-app.web.app.
+- Hosting de referencia desplegado.
 
 Verificación de reglas (SDK cliente, proyecto real):
 

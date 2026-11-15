@@ -4,16 +4,16 @@ Aplicación web de tarjetas de fidelidad digitales construida con **Flutter Web*
 
 Funciona **solo con el plan gratuito Spark**: no usa Cloud Functions, Storage ni ninguna API que exija facturación.
 
-## Estado del despliegue
+## Demo
 
-Proyecto Firebase **`tarjet-fidel-app`** (número `893788360074`), app web `1:893788360074:web:73730bb9d0169c42e1cc73`.
+Hay una instancia de referencia en **https://tarjet-fidel-app.web.app** (demo del autor; puede dejar de estar disponible). Es solo una demostración: no contiene datos de clientes reales ni credenciales del repositorio.
 
-| Recurso | Estado |
+| Recurso | Estado en la demo |
 | --- | --- |
-| Hosting | ✅ https://tarjet-fidel-app.web.app |
+| Hosting | ✅ activo |
 | Authentication (correo/contraseña) | ✅ activo |
 | Firestore + reglas + índices | ✅ base `default` (ver nota) |
-| Remote Config (`trial_expiry_date`) | ✅ versión 1 publicada |
+| Remote Config (`trial_expiry_date`) | ✅ publicado |
 | Cuenta de administrador | ✅ creada (`admins/{uid}`) |
 | Cloud Functions | ➖ no se usan (requieren Blaze) |
 | Storage (logo) | ➖ no se usa (requiere Blaze); el logo va en base64 |
@@ -80,6 +80,8 @@ tarjet_fidel/
 ---
 
 ## Puesta en marcha
+
+> **El repositorio no crea proyectos de Firebase.** Crear el proyecto, activar los servicios y registrar la app web es un paso manual en la consola (gratis en Spark). El código solo se conecta al proyecto cuyas credenciales recibe al compilar.
 
 ### 1. Crear el proyecto Firebase
 
@@ -341,6 +343,16 @@ El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` (o como U
 
 Cada negocio debe tener un **proyecto Firebase independiente** para aislar datos y usuarios. Todo el proceso cabe en el plan gratuito.
 
+> **Importante:** este repositorio es una plantilla, no un generador de proyectos. Cambiar el nombre del negocio, el logo o los colores en `config/main` **no crea** un proyecto Firebase nuevo: solo cambia la marca de la instancia actual. Para otra empresa hay que crear un proyecto aparte y seguir estos pasos. Así los datos quedan aislados de verdad.
+
+| Qué cambias | Dónde | Efecto |
+| --- | --- | --- |
+| Nombre, logo, premio, meta, color | `config/main` (panel de administración) | Solo cambia la marca; sigue usando el mismo proyecto y los mismos datos |
+| Credenciales del proyecto | `firebase.web.json` (ignorado por git) | La app se conecta a otro Firebase |
+| Proyecto destino de la CLI | `.firebaserc` | A qué proyecto se despliegan reglas, índices y hosting |
+| Base de Firestore | `firestore.database` en `firebase.json` + `FIRESTORE_DATABASE_ID` en `firebase.web.json` | Otra base dentro del proyecto |
+| Dominio del correo sintético | `AppConfig.clientEmailDomain` **y** `firestore.rules` | Cambia el correo interno de los clientes; los dos valores deben coincidir |
+
 1. Crea el nuevo proyecto Firebase (plan Spark) y una app web dentro de él.
 2. Activa Auth (correo/contraseña), Firestore, Remote Config y Hosting.
 3. Configura las credenciales y el proyecto de la CLI:
@@ -372,6 +384,14 @@ Cada negocio debe tener un **proyecto Firebase independiente** para aislar datos
 > `firebase.web.json` y `.firebaserc` están en `.gitignore`: cada negocio guarda los suyos y nunca se suben al repositorio. El CI compila con `firebase.web.example.json`, así que no necesita secretos.
 
 No compartas un mismo proyecto Firebase entre negocios: las reglas y los datos están pensados para aislamiento total. Si el nuevo proyecto usa otra base de Firestore, cámbiala también en `firestore.database` de `firebase.json` y en `FIRESTORE_DATABASE_ID` de `firebase.web.json` (el asistente lo hace por ti).
+
+### Qué no debe subirse al repositorio
+
+- `firebase.web.json` y `.firebaserc` (credenciales y proyecto de cada negocio).
+- Contraseñas, correos de administradores reales, códigos de check-in y archivos de service account.
+- `build/`, `.dart_tool/`, `.firebase/` y `functions/node_modules/`.
+
+La **API key web de Firebase no es un secreto** (viaja en el navegador), pero conviene restringirla en Google Cloud Console → **APIs y servicios → Credenciales** para que solo funcione desde tus dominios. Si publicas una demo, usa un proyecto distinto al de producción y no publiques el correo del administrador.
 
 ---
 
