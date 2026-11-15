@@ -4,6 +4,7 @@ import '../../models/config_model.dart';
 import '../../models/user_model.dart';
 import '../../services/backend_service.dart';
 import '../../services/firestore_service.dart';
+import '../../utils/motion.dart';
 import '../../widgets/app_animations.dart';
 import '../../widgets/confetti_burst.dart';
 
@@ -37,14 +38,21 @@ class _ClientsTabState extends State<ClientsTab> {
     super.dispose();
   }
 
-  Future<void> _resetStamps(UserModel user) async {
+  Future<void> _resetStamps(UserModel user, {required int goal}) async {
+    final safeGoal = goal.clamp(1, 100);
+    final ready = user.isRewardReadyFor(safeGoal);
+    final progress = '${user.currentStamps} / $safeGoal';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Canjear premio'),
+        title: Text(ready ? 'Canjear premio' : 'Canjear antes de completar'),
         content: Text(
-          '¿Canjear el premio de ${user.name}? '
-          'Sus sellos se reiniciarán a 0 y el historial se conserva.',
+          ready
+              ? '¿Canjear el premio de ${user.name}? '
+                    'Sus sellos se reiniciarán a 0 y el historial se conserva.'
+              : '${user.name} todavía no completó la tarjeta ($progress). '
+                    'Si canjeas ahora, sus sellos se reiniciarán a 0 y perderá '
+                    'el progreso.\n\n¿Quieres continuar?',
         ),
         actions: [
           TextButton(
@@ -53,7 +61,7 @@ class _ClientsTabState extends State<ClientsTab> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Canjear premio'),
+            child: Text(ready ? 'Canjear premio' : 'Canjear de todos modos'),
           ),
         ],
       ),
@@ -219,7 +227,10 @@ class _ClientsTabState extends State<ClientsTab> {
                                         goal: config.stampsGoal,
                                         color: config.color,
                                         busy: _busyUid == client.uid,
-                                        onRedeem: () => _resetStamps(client),
+                                        onRedeem: () => _resetStamps(
+                                          client,
+                                          goal: config.stampsGoal,
+                                        ),
                                       ),
                                     );
                                   },
@@ -258,6 +269,7 @@ class _ClientTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final safeGoal = goal.clamp(1, 100);
     final progress = (client.currentStamps / safeGoal).clamp(0.0, 1.0);
+    final rewardReady = client.isRewardReadyFor(safeGoal);
 
     return HoverLift(
       child: Container(
@@ -295,7 +307,7 @@ class _ClientTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (client.isRewardReady) ...[
+                      if (rewardReady) ...[
                         const SizedBox(width: 8),
                         Pulse(
                           maxScale: 1.06,
@@ -337,7 +349,9 @@ class _ClientTile extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                           child: TweenAnimationBuilder<double>(
                             tween: Tween(begin: 0, end: progress),
-                            duration: const Duration(milliseconds: 700),
+                            duration: prefersReducedMotion(context)
+                                ? Duration.zero
+                                : const Duration(milliseconds: 700),
                             curve: Curves.easeOutCubic,
                             builder: (context, value, _) {
                               return LinearProgressIndicator(

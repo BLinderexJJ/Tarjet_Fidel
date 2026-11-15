@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../models/config_model.dart';
 import '../models/user_model.dart';
+import '../utils/motion.dart';
 import 'logo_image.dart';
 
 /// Tarjeta de fidelidad con progreso animado de sellos.
@@ -20,13 +21,15 @@ class LoyaltyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = prefersReducedMotion(context);
     final goal = config.stampsGoal.clamp(1, 100);
     final stamps = user.currentStamps.clamp(0, goal);
     final progress = stamps / goal;
+    final rewardReady = user.isRewardReadyFor(goal);
     final base = config.color;
     final dark = Color.lerp(base, Colors.black, 0.35) ?? base;
 
-    return Container(
+    final card = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: LinearGradient(
@@ -90,7 +93,7 @@ class LoyaltyCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (user.isRewardReady)
+                    if (rewardReady)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -173,7 +176,9 @@ class LoyaltyCard extends StatelessWidget {
                 const SizedBox(height: 16),
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: progress),
-                  duration: const Duration(milliseconds: 700),
+                  duration: reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 700),
                   curve: Curves.easeOutCubic,
                   builder: (context, value, _) {
                     return ClipRRect(
@@ -197,7 +202,7 @@ class LoyaltyCard extends StatelessWidget {
                     final filled = index < stamps;
                     final isLastFilled = filled && index == stamps - 1;
                     Widget stamp = _Stamp(filled: filled, index: index + 1);
-                    if (animateStamps && isLastFilled) {
+                    if (animateStamps && isLastFilled && !reduceMotion) {
                       stamp = stamp
                           .animate()
                           .scale(
@@ -248,7 +253,10 @@ class LoyaltyCard extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.04, end: 0);
+    );
+
+    if (reduceMotion) return card;
+    return card.animate().fadeIn(duration: 350.ms).slideY(begin: 0.04, end: 0);
   }
 }
 
@@ -287,7 +295,9 @@ class _Stamp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 350),
+      duration: prefersReducedMotion(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 350),
       curve: Curves.easeOut,
       width: 34,
       height: 34,

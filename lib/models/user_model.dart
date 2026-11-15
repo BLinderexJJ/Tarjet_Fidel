@@ -86,4 +86,10 @@ class UserModel {
 
   /// Nombre visible con respaldo en el usuario interno.
   String get name => displayName.trim().isNotEmpty ? displayName : username;
+
+  /// Indica si el cliente ya alcanzó [goal] sellos.
+  ///
+  /// Se calcula desde los sellos actuales para no depender del campo
+  /// `isRewardReady`, que puede quedar desfasado si el negocio cambia la meta.
+  bool isRewardReadyFor(int goal) => currentStamps >= goal.clamp(1, 100);
 }

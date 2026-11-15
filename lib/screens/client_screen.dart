@@ -125,6 +125,9 @@ class _ClientScreenState extends State<ClientScreen> {
                     stream: _visitsStream,
                     builder: (context, visitsSnapshot) {
                       final visits = visitsSnapshot.data ?? const [];
+                      final rewardReady = user.isRewardReadyFor(
+                        config.stampsGoal,
+                      );
 
                       return CelebrationOnChange(
                         value: user.currentStamps,
@@ -149,7 +152,7 @@ class _ClientScreenState extends State<ClientScreen> {
                                       color: config.color,
                                     ),
                                   )
-                                else if (user.isRewardReady)
+                                else if (rewardReady)
                                   Reveal(
                                     delay: const Duration(milliseconds: 80),
                                     child: _RewardBanner(color: config.color),

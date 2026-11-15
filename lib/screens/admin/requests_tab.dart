@@ -117,6 +117,7 @@ class _RequestsTabState extends State<RequestsTab> {
                                 return StaggeredReveal(
                                   index: index,
                                   child: _RequestTile(
+                                    key: ValueKey(requests[index].id),
                                     request: requests[index],
                                     onApproved: _celebrate,
                                   ),
@@ -137,7 +138,11 @@ class _RequestsTabState extends State<RequestsTab> {
 }
 
 class _RequestTile extends StatefulWidget {
-  const _RequestTile({required this.request, required this.onApproved});
+  const _RequestTile({
+    super.key,
+    required this.request,
+    required this.onApproved,
+  });
 
   final StampRequestModel request;
   final VoidCallback onApproved;
@@ -150,6 +155,14 @@ class _RequestTileState extends State<_RequestTile> {
   final BackendService _backend = BackendService();
   late int _stamps = widget.request.stampsAwarded.clamp(1, 10);
   bool _busy = false;
+
+  @override
+  void didUpdateWidget(covariant _RequestTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.request.id != oldWidget.request.id) {
+      _stamps = widget.request.stampsAwarded.clamp(1, 10);
+    }
+  }
 
   void _notify(String message) {
     if (!mounted) return;

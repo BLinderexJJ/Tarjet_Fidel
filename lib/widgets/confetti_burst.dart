@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../utils/motion.dart';
+
 /// Explosión de confeti que se reproduce cuando cambia [trigger].
 ///
 /// Colócalo como última capa de un [Stack] con `Positioned.fill`. No bloquea
@@ -39,12 +41,22 @@ class _ConfettiBurstState extends State<ConfettiBurst>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (prefersReducedMotion(context) && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant ConfettiBurst oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.duration != oldWidget.duration) {
       _controller.duration = widget.duration;
     }
-    if (widget.trigger != oldWidget.trigger && widget.trigger > 0) {
+    if (widget.trigger != oldWidget.trigger &&
+        widget.trigger > 0 &&
+        !prefersReducedMotion(context)) {
       _play();
     }
   }
@@ -63,6 +75,7 @@ class _ConfettiBurstState extends State<ConfettiBurst>
 
   @override
   Widget build(BuildContext context) {
+    if (prefersReducedMotion(context)) return const SizedBox.shrink();
     return IgnorePointer(
       child: AnimatedBuilder(
         animation: _controller,
@@ -202,7 +215,9 @@ class _CelebrationOnChangeState extends State<CelebrationOnChange> {
   @override
   void didUpdateWidget(covariant CelebrationOnChange oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.enabled && widget.value > oldWidget.value) {
+    if (widget.enabled &&
+        widget.value > oldWidget.value &&
+        !prefersReducedMotion(context)) {
       _trigger += 1;
     }
   }

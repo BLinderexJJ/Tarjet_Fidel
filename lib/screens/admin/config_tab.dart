@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/config_model.dart';
+import '../../services/backend_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/logo_service.dart';
 import '../../utils/codes.dart';
@@ -181,7 +182,11 @@ class _ConfigTabState extends State<ConfigTab> {
       });
       _notify('Configuración guardada.');
     } catch (error) {
-      _notify('No se pudo guardar la configuración. Inténtalo de nuevo.');
+      _notify(
+        error is AppFailure
+            ? error.message
+            : 'No se pudo guardar la configuración. Inténtalo de nuevo.',
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }

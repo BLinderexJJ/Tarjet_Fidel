@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/backend_service.dart';
 import '../services/firestore_service.dart';
 import '../theme.dart';
+import '../utils/motion.dart';
 import '../widgets/app_animations.dart';
 import '../widgets/logo_image.dart';
 
@@ -211,10 +212,14 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                           const SizedBox(height: 22),
                           AnimatedSize(
-                            duration: const Duration(milliseconds: 260),
+                            duration: prefersReducedMotion(context)
+                                ? Duration.zero
+                                : const Duration(milliseconds: 260),
                             curve: Curves.easeOutCubic,
                             child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 260),
+                              duration: prefersReducedMotion(context)
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 260),
                               switchInCurve: Curves.easeOutCubic,
                               switchOutCurve: Curves.easeInCubic,
                               transitionBuilder: (child, animation) {

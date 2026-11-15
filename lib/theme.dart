@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'utils/motion.dart';
+
 /// Tema base de la aplicación. El color principal puede venir de la
 /// configuración del negocio (`config.themeColor`).
 ThemeData buildAppTheme({Color seed = const Color(0xFF4F46E5)}) {
@@ -56,7 +58,18 @@ class _BrandBackgroundState extends State<BrandBackground>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 14),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (prefersReducedMotion(context)) {
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {

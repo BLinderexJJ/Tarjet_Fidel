@@ -226,7 +226,7 @@
 Verificado y desplegado:
 
 - `flutter analyze` → sin incidencias.
-- `flutter test` → 10 pruebas superadas.
+- `flutter test` → 17 pruebas superadas (modelos, códigos, animaciones y accesibilidad).
 - `flutter build web --release --no-wasm-dry-run --dart-define-from-file=firebase.web.json` → compilación correcta.
 - Proyecto Firebase de referencia creado y app web registrada.
 - Credenciales reales en `firebase.web.json` (ignorado por git); `lib/firebase_options.dart` las lee por `dart-define`.
@@ -236,6 +236,15 @@ Verificado y desplegado:
 - Administrador de referencia con documento `admins/{uid}`; inicio de sesión verificado.
 - `config/main` sembrada; `counters/clients` en 0.
 - Hosting de referencia desplegado.
+
+Mejoras de interfaz y accesibilidad:
+
+- `AnimatedIndexedStack` mantiene el ticker de la pestaña saliente durante el fundido y lo apaga al terminar, sin dejar capas visibles.
+- Todas las animaciones decorativas respetan `MediaQuery.disableAnimations` (movimiento reducido): entrada, pulso, brillo, confeti, fondo de marca, progreso y transiciones.
+- El estado «premio listo» se calcula con la meta actual (`UserModel.isRewardReadyFor`), así que cambiar `stampsGoal` no deja insignias desfasadas.
+- El canje avisa si el cliente aún no completó la tarjeta antes de reiniciar sus sellos.
+- `approveStampRequest` rechaza valores fuera de 1–10 en lugar de recortarlos en silencio.
+- Los errores de guardado de configuración muestran el mensaje de `AppFailure` cuando existe.
 
 Verificación de reglas (SDK cliente, proyecto real):
 
@@ -252,7 +261,7 @@ Pendiente (opcional):
 - Registrar App Check y compilar con `RECAPTCHA_SITE_KEY`.
 - Recuperación de contraseña para clientes (hoy es asistida por el negocio).
 - Exportación de clientes/historial y notificaciones externas.
-- Pruebas de widgets y pruebas de reglas con el emulador.
+- Pruebas de reglas con el emulador.
 
 ## Desviaciones respecto al plan original
 

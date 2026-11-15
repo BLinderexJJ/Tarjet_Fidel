@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../utils/motion.dart';
+
 /// Entrada suave: fade + deslizamiento vertical.
 ///
 /// Se usa para que cada tarjeta, sección o fila aparezca con vida al montarse.
@@ -25,7 +27,7 @@ class Reveal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!enabled) return child;
+    if (!enabled || prefersReducedMotion(context)) return child;
     return child
         .animate()
         .fadeIn(duration: duration, delay: delay, curve: Curves.easeOutCubic)
@@ -65,6 +67,9 @@ class _HoverLiftState extends State<HoverLift> {
 
   @override
   Widget build(BuildContext context) {
+    if (prefersReducedMotion(context)) {
+      return MouseRegion(cursor: widget.cursor, child: widget.child);
+    }
     return MouseRegion(
       cursor: widget.cursor,
       onEnter: (_) => setState(() => _hovered = true),
@@ -112,9 +117,9 @@ class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
   );
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.enabled) _controller.repeat(reverse: true);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncController();
   }
 
   @override
@@ -124,11 +129,18 @@ class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
       _controller.duration = widget.duration;
     }
     if (widget.enabled != oldWidget.enabled) {
-      if (widget.enabled) {
-        _controller.repeat(reverse: true);
-      } else {
-        _controller.stop();
-      }
+      _syncController();
+    }
+  }
+
+  /// Arranca o detiene el pulso según la preferencia de movimiento del sistema.
+  void _syncController() {
+    final shouldRun = widget.enabled && !prefersReducedMotion(context);
+    if (shouldRun) {
+      if (!_controller.isAnimating) _controller.repeat(reverse: true);
+    } else if (_controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
     }
   }
 
@@ -140,6 +152,7 @@ class _PulseState extends State<Pulse> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.enabled || prefersReducedMotion(context)) return widget.child;
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -169,7 +182,7 @@ class ShimmerHighlight extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!enabled) return child;
+    if (!enabled || prefersReducedMotion(context)) return child;
     return child
         .animate(onPlay: (controller) => controller.repeat())
         .shimmer(duration: duration, color: color, curve: Curves.easeInOut);
@@ -178,8 +191,10 @@ class ShimmerHighlight extends StatelessWidget {
 
 /// Como [IndexedStack], pero con un fundido suave al cambiar de pestaña.
 ///
-/// Mantiene vivas todas las páginas (y sus streams) para no perder estado.
-class AnimatedIndexedStack extends StatelessWidget {
+/// Mantiene vivas todas las páginas (y sus streams) para no perder estado. La
+/// pestaña saliente conserva su ticker mientras dura el fundido y lo apaga al
+/// terminar, evitando que quede visible por encima de la nueva.
+class AnimatedIndexedStack extends StatefulWidget {
   const AnimatedIndexedStack({
     super.key,
     required this.index,
@@ -192,20 +207,49 @@ class AnimatedIndexedStack extends StatelessWidget {
   final Duration duration;
 
   @override
+  State<AnimatedIndexedStack> createState() => _AnimatedIndexedStackState();
+}
+
+class _AnimatedIndexedStackState extends State<AnimatedIndexedStack> {
+  /// Índices que aún se están desvaneciendo tras dejar de estar activos.
+  final Set<int> _fading = <int>{};
+
+  @override
+  void didUpdateWidget(covariant AnimatedIndexedStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index != oldWidget.index) {
+      _fading
+        ..remove(widget.index)
+        ..add(oldWidget.index);
+    }
+  }
+
+  void _handleFadeEnd(int index) {
+    if (!mounted || index == widget.index) return;
+    if (_fading.remove(index)) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (prefersReducedMotion(context)) {
+      return IndexedStack(index: widget.index, children: widget.children);
+    }
+
     return Stack(
       fit: StackFit.expand,
-      children: List.generate(children.length, (i) {
-        final active = i == index;
+      children: List.generate(widget.children.length, (i) {
+        final active = i == widget.index;
+        final visible = active || _fading.contains(i);
         return IgnorePointer(
           ignoring: !active,
           child: TickerMode(
-            enabled: active,
+            enabled: visible,
             child: AnimatedOpacity(
               opacity: active ? 1 : 0,
-              duration: duration,
+              duration: widget.duration,
               curve: Curves.easeOutCubic,
-              child: children[i],
+              onEnd: () => _handleFadeEnd(i),
+              child: widget.children[i],
             ),
           ),
         );

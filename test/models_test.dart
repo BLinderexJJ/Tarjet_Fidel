@@ -66,6 +66,19 @@ void main() {
       expect(user.name, 'pedro');
       expect(user.currentStamps, 0);
     });
+
+    test('calcula el premio listo con la meta actual', () {
+      final user = UserModel.fromMap('uid-3', const {
+        'username': 'lucia',
+        'currentStamps': 6,
+        'isRewardReady': false,
+      });
+
+      expect(user.isRewardReadyFor(5), isTrue);
+      expect(user.isRewardReadyFor(6), isTrue);
+      expect(user.isRewardReadyFor(10), isFalse);
+      expect(user.isRewardReadyFor(0), isTrue);
+    });
   });
 
   group('normalizeCheckinCode', () {

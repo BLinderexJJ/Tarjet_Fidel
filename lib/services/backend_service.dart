@@ -273,7 +273,13 @@ class BackendService {
     int stampsAwarded = 1,
   }) async {
     final admin = _requireAdmin();
-    final safeStamps = stampsAwarded.clamp(1, 10);
+    if (stampsAwarded < 1 || stampsAwarded > 10) {
+      throw AppFailure(
+        'Los sellos deben estar entre 1 y 10.',
+        code: 'invalid_stamps',
+      );
+    }
+    final safeStamps = stampsAwarded;
 
     final requestRef = _db.collection('stamp_requests').doc(requestId);
 
