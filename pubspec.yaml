@@ -1,0 +1,39 @@
+name: tarjet_fidel
+description: Tarjet Fidel - Plataforma de tarjetas de fidelidad digital para negocios.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Firebase
+  firebase_core: ^5.1.0
+  firebase_auth: ^7.0.1
+  cloud_firestore: ^7.1.0
+  firebase_remote_config: ^7.0.1
+  firebase_app_check: ^0.5.1
+
+  # QR: lectura con cámara del navegador y generación de códigos
+  mobile_scanner: ^7.5.0
+  qr_flutter: ^4.1.0
+
+  # UI
+  flutter_animate: ^4.5.2
+  intl: ^0.20.3
+
+  # Subida del logo del negocio (web)
+  file_picker: ^13.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

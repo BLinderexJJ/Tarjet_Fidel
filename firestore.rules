@@ -1,0 +1,286 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // El panel considera administrador a quien tiene documento en `admins`.
+    // `exists()` no está sujeto a las reglas de lectura de `admins`.
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function configExists() {
+      return exists(/databases/$(database)/documents/config/main);
+    }
+
+    function configData() {
+      return get(/databases/$(database)/documents/config/main).data;
+    }
+
+    // La prueba se controla con `trialExpiryAt` (Timestamp). Si no existe el
+    // campo, la prueba se considera activa.
+    function trialActive() {
+      return configExists()
+        && (
+          !('trialExpiryAt' in configData())
+          || request.time < configData().trialExpiryAt
+        );
+    }
+
+    function maxUsers() {
+      return configExists() && ('maxUsers' in configData())
+        ? configData().maxUsers
+        : 50;
+    }
+
+    function clientCount() {
+      return exists(/databases/$(database)/documents/counters/clients)
+        ? get(/databases/$(database)/documents/counters/clients).data.count
+        : 0;
+    }
+
+    // Correo sintético de los clientes: cliente_<usuario>@tarjetfidel.local
+    function isClientEmail(username) {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email ==
+          'cliente_' + username + '@tarjetfidel.local';
+    }
+
+    function hasClientEmailShape() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.matches(
+          '^cliente_[a-z0-9._-]{3,32}@tarjetfidel[.]local$'
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Configuración (pública para mostrar nombre/logo antes de entrar)
+    // -------------------------------------------------------------------------
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Usuarios
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+
+      // Solo el propio usuario puede crear su perfil, una única vez, como
+      // cliente y con los contadores a cero. El correo sintético debe
+      // corresponder exactamente con el nombre de usuario.
+      allow create: if isSelf(userId)
+        && trialActive()
+        && request.resource.data.role == 'client'
+        && request.resource.data.currentStamps == 0
+        && request.resource.data.totalVisits == 0
+        && request.resource.data.isRewardReady == false
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 32
+        && request.resource.data.username.matches(
+          '^[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}$'
+        )
+        && request.resource.data.usernameLower ==
+          request.resource.data.username
+        && isClientEmail(request.resource.data.username)
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 60
+        && clientCount() < maxUsers();
+
+      // El cliente solo puede cambiar su nombre visible. Los sellos, visitas y
+      // el rol solo los modifica el administrador.
+      allow update: if isAdmin()
+        || (
+          isSelf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['displayName', 'updatedAt'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 60
+        );
+
+      allow delete: if false;
+    }
+
+    // Reserva de nombres de usuario. Se crea en la misma transacción que el
+    // perfil y nunca se modifica ni se borra.
+    match /usernames/{username} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && trialActive()
+        && isClientEmail(username)
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Contador de clientes para respetar `config/main.maxUsers` sin consultas.
+    match /counters/clients {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && trialActive()
+        && hasClientEmailShape()
+        && request.resource.data.count == 1
+        && getAfter(
+             /databases/$(database)/documents/users/$(request.auth.uid)
+           ).data.role == 'client';
+      allow update: if isSignedIn()
+        && trialActive()
+        && hasClientEmailShape()
+        && request.resource.data.count == resource.data.count + 1
+        && request.resource.data.count <= maxUsers()
+        && getAfter(
+             /databases/$(database)/documents/users/$(request.auth.uid)
+           ).data.role == 'client';
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Solicitudes de sello (anti-fraude)
+    // -------------------------------------------------------------------------
+
+    match /stamp_requests/{requestId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // El cliente NUNCA otorga sellos: solo crea una solicitud `pending`.
+      // Las reglas verifican el código vigente, el estado, el autor y que
+      // exista el documento `pending_requests/{uid}` de la misma transacción.
+      allow create: if isSignedIn()
+        && !isAdmin()
+        && trialActive()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.stampsAwarded == 1
+        && request.resource.data.code is string
+        && request.resource.data.code == configData().checkinCode
+        && request.resource.data.userName is string
+        && request.resource.data.userName.size() > 0
+        && request.resource.data.userName.size() <= 60
+        && request.resource.data.createdAt == request.time
+        && getAfter(
+             /databases/$(database)/documents/pending_requests/$(request.auth.uid)
+           ).data.requestId == requestId;
+
+      // Solo el administrador aprueba o rechaza, y solo desde `pending`.
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.userName == resource.data.userName
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.stampsAwarded is int
+        && request.resource.data.stampsAwarded >= 1
+        && request.resource.data.stampsAwarded <= 10
+        && (
+          request.resource.data.status == 'approved'
+            ? request.resource.data.approvedBy == request.auth.uid
+            : request.resource.data.rejectedBy == request.auth.uid
+        );
+
+      allow delete: if false;
+    }
+
+    // Una sola solicitud pendiente por cliente. Se borra al aprobar/rechazar.
+    match /pending_requests/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+
+      allow create: if isSelf(uid)
+        && trialActive()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.requestId is string
+        && getAfter(
+             /databases/$(database)/documents/stamp_requests/$(request.resource.data.requestId)
+           ).data.userId == request.auth.uid
+        && getAfter(
+             /databases/$(database)/documents/stamp_requests/$(request.resource.data.requestId)
+           ).data.status == 'pending';
+
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Límite de 10 solicitudes por cliente cada 24 horas.
+    match /rate_limits/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+
+      allow create: if isSelf(uid)
+        && trialActive()
+        && request.resource.data.count == 1
+        && request.resource.data.windowStart == request.time;
+
+      allow update: if isSelf(uid)
+        && trialActive()
+        && (
+          (
+            request.time.toMillis() <
+              resource.data.windowStart.toMillis() + 86400000
+            && request.resource.data.count == resource.data.count + 1
+            && request.resource.data.count <= 10
+            && request.resource.data.windowStart ==
+              resource.data.windowStart
+          )
+          || (
+            request.time.toMillis() >=
+              resource.data.windowStart.toMillis() + 86400000
+            && request.resource.data.count == 1
+            && request.resource.data.windowStart == request.time
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Historial y canjes
+    // -------------------------------------------------------------------------
+
+    // Historial inmutable: solo lo escribe el administrador al aprobar.
+    match /visits/{visitId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin()
+        && request.resource.data.userId is string
+        && request.resource.data.stamps is int
+        && request.resource.data.stamps >= 1
+        && request.resource.data.stamps <= 10
+        && request.resource.data.approvedBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Registro de canjes de premios. Solo el administrador lo consulta.
+    match /redemptions/{redemptionId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.userId is string
+        && request.resource.data.redeemedBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Cada usuario solo puede comprobar si él mismo es administrador.
+    match /admins/{adminId} {
+      allow get: if isSelf(adminId);
+      allow list, write: if false;
+    }
+  }
+}
