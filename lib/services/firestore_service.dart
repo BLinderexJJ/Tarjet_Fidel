@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../app_config.dart';
+import '../models/admin_role.dart';
 import '../models/config_model.dart';
 import '../models/stamp_request_model.dart';
 import '../models/user_model.dart';
@@ -39,14 +41,43 @@ class FirestoreService {
   }
 
   Future<void> saveConfig(ConfigModel config) {
-    final data = config.toMap();
+    // La fecha de prueba solo la cambia el superadministrador desde la
+    // pestaña Plataforma. El administrador del negocio puede guardar el resto
+    // de la configuración sin tocar los campos `trial*`.
+    final data = config.toMap()
+      ..remove('trialExpiryDate')
+      ..remove('trialExpiryAt')
+      ..remove('trialUpdatedAt')
+      ..remove('trialUpdatedBy');
 
-    // Las reglas de Firestore no pueden convertir cadenas ISO a fechas, así que
-    // se guarda también un Timestamp para poder bloquear la prueba vencida.
-    final expiry = DateTime.tryParse(config.trialExpiryDate ?? '');
-    if (expiry != null) {
-      data['trialExpiryAt'] = Timestamp.fromDate(expiry.toUtc());
-    }
+    return _configRef.set(data, SetOptions(merge: true));
+  }
+
+  /// Renueva o fija la fecha de expiración de la prueba.
+  ///
+  /// Las reglas solo permiten esta escritura a un superadministrador.
+  Future<void> saveTrialExpiry(DateTime expiry) {
+    final utc = expiry.toUtc();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final data = <String, dynamic>{
+      'trialExpiryDate': utc.toIso8601String(),
+      'trialExpiryAt': Timestamp.fromDate(utc),
+      'trialUpdatedAt': FieldValue.serverTimestamp(),
+    };
+    if (uid != null && uid.isNotEmpty) data['trialUpdatedBy'] = uid;
+
+    return _configRef.set(data, SetOptions(merge: true));
+  }
+
+  /// Quita la fecha límite de la prueba. Solo un superadministrador puede.
+  Future<void> clearTrialExpiry() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final data = <String, dynamic>{
+      'trialExpiryDate': FieldValue.delete(),
+      'trialExpiryAt': FieldValue.delete(),
+      'trialUpdatedAt': FieldValue.serverTimestamp(),
+    };
+    if (uid != null && uid.isNotEmpty) data['trialUpdatedBy'] = uid;
 
     return _configRef.set(data, SetOptions(merge: true));
   }
@@ -70,10 +101,21 @@ class FirestoreService {
     return UserModel.fromDoc(doc);
   }
 
-  /// Un usuario es administrador si existe `admins/{uid}`.
-  Future<bool> isAdmin(String uid) async {
+  /// Rol de una cuenta administrativa según `admins/{uid}`.
+  ///
+  /// Un documento sin `role` se considera administrador del negocio para
+  /// mantener compatibilidad con instalaciones anteriores.
+  Future<AdminRole> adminRole(String uid) async {
     final doc = await _db.collection('admins').doc(uid).get();
-    return doc.exists;
+    if (!doc.exists) return AdminRole.none;
+    return AdminRole.fromAdminValue(doc.data()?['role']);
+  }
+
+  /// Un usuario es administrador (del negocio o de la plataforma) si existe
+  /// `admins/{uid}`.
+  Future<bool> isAdmin(String uid) async {
+    final role = await adminRole(uid);
+    return role.isAdmin;
   }
 
   Stream<List<UserModel>> clientsStream() {

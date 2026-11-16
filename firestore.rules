@@ -22,6 +22,17 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    function adminData() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data;
+    }
+
+    // El superadministrador es el dueño de la plataforma (el programador).
+    // Puede renovar la prueba y usar el resto de funciones del negocio.
+    // Los documentos antiguos sin `role` se consideran administradores.
+    function isSuperAdmin() {
+      return isAdmin() && adminData().get('role', '') == 'superadmin';
+    }
+
     function configExists() {
       return exists(/databases/$(database)/documents/config/main);
     }
@@ -74,7 +85,30 @@ service cloud.firestore {
 
     match /config/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+
+      // El administrador del negocio puede crear la configuración inicial y
+      // cambiar la marca, pero no la fecha de la prueba. Solo el
+      // superadministrador toca los campos `trial*`.
+      allow create: if isSuperAdmin()
+        || (
+          isAdmin()
+          && !('trialExpiryAt' in request.resource.data)
+          && !('trialExpiryDate' in request.resource.data)
+          && !('trialUpdatedAt' in request.resource.data)
+          && !('trialUpdatedBy' in request.resource.data)
+        );
+      allow update: if isSuperAdmin()
+        || (
+          isAdmin()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny([
+                 'trialExpiryAt',
+                 'trialExpiryDate',
+                 'trialUpdatedAt',
+                 'trialUpdatedBy',
+               ])
+        );
+      allow delete: if isSuperAdmin();
     }
 
     // -------------------------------------------------------------------------

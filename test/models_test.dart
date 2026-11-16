@@ -35,6 +35,18 @@ void main() {
       final config = ConfigModel.fromMap(const {'themeColor': 'no-es-color'});
       expect(config.color, const Color(0xFF4F46E5));
     });
+
+    test('expone la fecha de prueba normalizada a UTC', () {
+      final config = ConfigModel.fromMap(const {
+        'trialExpiryDate': '2026-11-27T23:59:59Z',
+      });
+
+      expect(config.trialExpiry, DateTime.utc(2026, 11, 27, 23, 59, 59));
+    });
+
+    test('trialExpiry es null sin fecha configurada', () {
+      expect(ConfigModel.defaults().trialExpiry, isNull);
+    });
   });
 
   group('UserModel', () {

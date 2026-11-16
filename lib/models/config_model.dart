@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/trial.dart';
+
 /// Documento único `config/main`.
 class ConfigModel {
   const ConfigModel({
@@ -29,7 +31,7 @@ class ConfigModel {
   /// Datos de contacto que se muestran cuando la prueba expira.
   final String contactInfo;
 
-  /// Espejo informativo de `trial_expiry_date` de Remote Config.
+  /// Fecha de prueba en ISO 8601; espejo legible de `trialExpiryAt`.
   final String? trialExpiryDate;
 
   factory ConfigModel.fromMap(Map<String, dynamic> data) {
@@ -99,6 +101,9 @@ class ConfigModel {
     if (value == null) return const Color(0xFF4F46E5);
     return Color(0xFF000000 | value);
   }
+
+  /// Fecha de expiración de la prueba, normalizada a UTC.
+  DateTime? get trialExpiry => parseTrialExpiry(trialExpiryDate);
 
   /// Payload que se codifica dentro del QR de check-in.
   String get checkinPayload => 'TARJET:$checkinCode';

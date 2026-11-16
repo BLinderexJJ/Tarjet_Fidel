@@ -14,6 +14,9 @@
  *     --name "Administrador" \
  *     --project mi-proyecto-firebase \
  *     --business "Mi Negocio"
+ *
+ * Para el dueño de la plataforma (programador), añade:
+ *   --role superadmin
  */
 import { readFileSync } from 'node:fs';
 import { randomInt } from 'node:crypto';
@@ -110,6 +113,7 @@ Obligatorios:
 
 Opciones:
   --name <nombre>             Nombre visible (por defecto "Administrador").
+  --role <admin|superadmin>   Rol de la cuenta (por defecto "admin").
   --project <id>              ID del proyecto Firebase.
   --service-account <ruta>    JSON del service account.
   --business <nombre>         Nombre del negocio para config/main.
@@ -137,6 +141,11 @@ async function main() {
     typeof args.name === 'string' && args.name.trim()
       ? args.name.trim()
       : 'Administrador';
+  const role =
+    typeof args.role === 'string' &&
+    args.role.trim().toLowerCase() === 'superadmin'
+      ? 'superadmin'
+      : 'admin';
 
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     fail('El correo del administrador no es válido.');
@@ -194,13 +203,14 @@ async function main() {
     });
   }
 
-  await auth.setCustomUserClaims(user.uid, { admin: true, role: 'admin' });
+  await auth.setCustomUserClaims(user.uid, { admin: true, role });
 
   const adminRef = db.doc(`admins/${user.uid}`);
   const adminSnapshot = await adminRef.get();
   const adminData = {
     email,
     displayName,
+    role,
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (!adminSnapshot.exists) {
@@ -275,7 +285,8 @@ async function main() {
   console.log(`  Nombre:        ${displayName}`);
   console.log(`  UID:           ${user.uid}`);
   console.log(`  Documento:     admins/${user.uid}`);
-  console.log(`  Claim:         admin=true, role=admin`);
+  console.log(`  Rol:           ${role}`);
+  console.log(`  Claim:         admin=true, role=${role}`);
   console.log(
     `  Config:        ${configCreated ? 'config/main creada' : 'config/main ya existía'}`,
   );

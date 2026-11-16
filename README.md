@@ -13,8 +13,9 @@ Hay una instancia de referencia en **https://tarjet-fidel-app.web.app** (demo de
 | Hosting | ✅ activo |
 | Authentication (correo/contraseña) | ✅ activo |
 | Firestore + reglas + índices | ✅ base `default` (ver nota) |
-| Remote Config (`trial_expiry_date`) | ✅ publicado |
+| Remote Config (`trial_expiry_date`) | ✅ publicado (respaldo) |
 | Cuenta de administrador | ✅ creada (`admins/{uid}`) |
+| Cuenta de superadministrador | ✅ creada (`admins/{uid}` con `role: "superadmin"`) |
 | Cloud Functions | ➖ no se usan (requieren Blaze) |
 | Storage (logo) | ➖ no se usa (requiere Blaze); el logo va en base64 |
 | App Check | ➖ opcional, sin registrar |
@@ -23,8 +24,11 @@ Hay una instancia de referencia en **https://tarjet-fidel-app.web.app** (demo de
 
 ## Roles
 
-- **Administrador**: inicia sesión con correo y contraseña reales. Ve solicitudes pendientes en tiempo real, aprueba o rechaza visitas, ajusta la cantidad de sellos, gestiona clientes, canjea premios, edita la configuración del negocio y muestra el QR de check-in.
+- **Superadministrador**: dueño de la plataforma (normalmente el programador). Se identifica con `admins/{uid}.role = "superadmin"`. Usa todas las funciones del administrador del negocio y, además, ve la pestaña **Plataforma**, donde consulta la fecha exacta de vencimiento de la prueba y la renueva o la quita. Puede entrar al panel aunque la prueba esté vencida, porque desde ahí la reactiva.
+- **Administrador**: dueño o encargado del negocio. Inicia sesión con correo y contraseña reales. Ve solicitudes pendientes en tiempo real, aprueba o rechaza visitas, ajusta la cantidad de sellos, gestiona clientes, canjea premios, edita la configuración del negocio y muestra el QR de check-in. No puede cambiar la fecha de la prueba.
 - **Cliente**: se registra con un nombre de usuario único y una contraseña de exactamente 6 dígitos. Internamente se usa el correo sintético `cliente_<usuario>@tarjetfidel.local`. Ve su tarjeta animada, escanea el QR del negocio (o introduce el código manualmente) y consulta su historial.
+
+Un documento `admins/{uid}` sin campo `role` se sigue tratando como administrador del negocio, para no romper instalaciones anteriores.
 
 ## Seguridad anti-fraude
 
@@ -37,7 +41,8 @@ Sin Cloud Functions, la lógica de negocio vive en transacciones de Firestore ej
 - **Una sola solicitud pendiente** por cliente (`pending_requests/{uid}`), creada en la misma transacción.
 - Límite de **10 solicitudes por cliente cada 24 horas** (`rate_limits/{uid}`), también verificado por las reglas.
 - Límite de clientes configurable con `config/main.maxUsers` (por defecto 50), controlado con `counters/clients`.
-- Prueba de 15 días controlada desde Remote Config (`trial_expiry_date`) y reforzada por las reglas con `config/main.trialExpiryAt`.
+- Prueba controlada desde Firestore (`config/main.trialExpiryAt`) y reforzada por las reglas; Remote Config (`trial_expiry_date`) solo actúa como respaldo cuando Firestore no tiene fecha.
+- Solo el superadministrador puede escribir los campos `trialExpiryAt`, `trialExpiryDate`, `trialUpdatedAt` y `trialUpdatedBy`; el guardado normal de configuración del negocio no los toca.
 - Los clientes solo pueden crear su perfil con el correo sintético que corresponde a su nombre de usuario y con los contadores a cero.
 
 ## Estructura
@@ -49,15 +54,15 @@ tarjet_fidel/
 │  ├─ firebase_options.dart         Credenciales inyectadas por dart-define
 │  ├─ app_config.dart               Base de datos, dominio sintético, límites del logo
 │  ├─ theme.dart                    Tema y fondo de marca animado
-│  ├─ models/                       ConfigModel, UserModel, StampRequestModel
+│  ├─ models/                       ConfigModel, UserModel, StampRequestModel, AdminRole
 │  ├─ services/
 │  │  ├─ auth_service.dart          Registro/login, reset del admin y rollback de Auth
 │  │  ├─ backend_service.dart       Transacciones: solicitudes, aprobación, canje, prueba
 │  │  ├─ firestore_service.dart     Lecturas en tiempo real y guardado de configuración
 │  │  └─ logo_service.dart          Selector de imagen y conversión a base64
-│  ├─ screens/                      Acceso, cliente, admin y bloqueo de prueba
+│  ├─ screens/                      Acceso, cliente, admin, plataforma y bloqueo de prueba
 │  ├─ widgets/                      Tarjeta, QR, escáner, animaciones y confeti
-│  └─ utils/                        Códigos y metadatos del navegador
+│  └─ utils/                        Códigos, fechas de prueba y metadatos del navegador
 ├─ tool/configure_firebase.mjs      Asistente de credenciales por negocio
 ├─ .github/workflows/flutter.yml    CI: analyze + test + build web
 ├─ firebase.web.example.json        Plantilla sin credenciales
@@ -89,7 +94,7 @@ Crea un proyecto en la consola de Firebase y activa:
 
 1. **Authentication** → método **Correo electrónico/contraseña**.
 2. **Firestore Database** → modo producción, región cercana. La base con nombre `default` la crea `firebase deploy` a partir de `firestore.location` de `firebase.json`; no hace falta crearla a mano.
-3. **Remote Config**.
+3. **Remote Config** (opcional, solo como respaldo de la prueba).
 4. **Hosting**.
 
 No actives Functions ni Storage: no son necesarios y exigen el plan Blaze.
@@ -134,21 +139,23 @@ flutter build web --release --no-wasm-dry-run --dart-define-from-file=firebase.w
 
 Si `firebase.web.json` no existe o conserva `REPLACE_ME`, la app muestra una pantalla de configuración en lugar de fallar. `lib/firebase_options.dart` ya no contiene credenciales: solo lee las variables inyectadas al compilar.
 
-### 4. Configurar la prueba en Remote Config
+### 4. Configurar la prueba
 
-En **Remote Config → Crear configuración**, añade el parámetro:
+La fuente de verdad es **Firestore**: `config/main.trialExpiryAt` (Timestamp) y su espejo legible `config/main.trialExpiryDate` (ISO 8601). El superadministrador los edita desde la pestaña **Plataforma** del panel; las reglas aplican el bloqueo al instante, sin recompilar ni volver a desplegar.
+
+Remote Config es solo un **respaldo** para instalaciones nuevas que aún no tienen fecha en Firestore. Si quieres usarlo, en **Remote Config → Crear configuración** añade:
 
 | Parámetro | Tipo | Valor de ejemplo |
 | --- | --- | --- |
 | `trial_expiry_date` | String | `2026-12-31T23:59:59Z` |
 
-Publica los cambios. La app lee el valor con `fetchAndActivate()` y lo compara con la fecha del dispositivo; si no existe o no es una fecha válida, la prueba se considera activa para no bloquear el negocio por error.
+Publica los cambios. La app prioriza Firestore y solo consulta Remote Config cuando `config/main` no tiene `trialExpiryAt` ni `trialExpiryDate`. Si no hay ninguna fecha válida, la prueba se considera activa para no bloquear el negocio por error.
 
-Para que las reglas también bloqueen a los clientes, guarda la misma fecha en `config/main.trialExpiryAt` (tipo Timestamp). El panel de administración lo hace automáticamente al guardar la configuración: escribe `trialExpiryAt` a partir de `trialExpiryDate`.
+La cuenta de superadministrador puede fijar la fecha exacta, sumar +7/+15/+30/+90 días o quitar el límite. Los clientes y el panel del negocio se desbloquean en tiempo real al renovarla.
 
 ### 5. Crear el primer administrador
 
-El rol de administrador se determina **solo** por la existencia de `admins/{uid}`; no hacen falta claims personalizados.
+El rol se determina **solo** por el documento `admins/{uid}`; no hacen falta claims personalizados.
 
 1. En **Authentication → Users → Add user**, crea la cuenta con el correo y la contraseña del administrador.
 2. Copia su **UID**.
@@ -158,6 +165,7 @@ El rol de administrador se determina **solo** por la existencia de `admins/{uid}
    | --- | --- | --- |
    | `email` | string | correo del administrador |
    | `displayName` | string | nombre visible |
+   | `role` | string | `admin` (opcional; sin `role` también es admin) |
    | `createdAt` | timestamp | ahora |
    | `updatedAt` | timestamp | ahora |
 
@@ -166,7 +174,11 @@ El rol de administrador se determina **solo** por la existencia de `admins/{uid}
 
 Con eso el administrador ya puede entrar y el panel permite terminar de configurar el negocio.
 
-> Alternativa heredada: `functions/scripts/create-admin.mjs` crea la cuenta, el documento `admins`, los claims y siembra `config/main` usando credenciales locales de Google Cloud. Funciona sin facturación, pero no es necesario.
+#### Crear el superadministrador
+
+Repite los pasos con la cuenta del programador, pero guarda `role: "superadmin"` en `admins/{uid}`. Esa cuenta verá la pestaña **Plataforma** y podrá renovar la prueba incluso si ya venció. El documento de `admins` no se puede escribir desde la app: créalo desde la consola o con el script heredado.
+
+> Alternativa heredada: `functions/scripts/create-admin.mjs` crea la cuenta, el documento `admins`, los claims y siembra `config/main` usando credenciales locales de Google Cloud. Acepta `--role superadmin`. Funciona sin facturación, pero no es necesario.
 
 ### 6. Desplegar reglas e índices
 
@@ -219,7 +231,17 @@ La app activa App Check solo si se compiló con `RECAPTCHA_SITE_KEY`; sin esa va
 2. Pestaña **QR**: genera o copia el código de check-in y muestra el QR en el mostrador.
 3. Pestaña **Solicitudes**: aparecen en tiempo real. Aprueba con la cantidad de sellos editable o rechaza.
 4. Pestaña **Clientes**: busca clientes, consulta su progreso y canjea premios (reinicia sellos y deja registro en `redemptions`).
-5. Pestaña **Configuración**: nombre, logo, meta de sellos, premio, color, límite de usuarios y contacto.
+5. Pestaña **Configuración**: nombre, logo, meta de sellos, premio, color, límite de usuarios y contacto. La fecha de la prueba solo se muestra; no se edita aquí.
+
+### Superadministrador
+
+1. Inicia sesión con su cuenta; entra al panel aunque la prueba esté vencida.
+2. Pestaña **Plataforma**: muestra si la prueba está activa o vencida, los días restantes, la fecha local y el valor UTC exacto.
+3. Fija una fecha y hora con el selector, o usa los botones **+7 / +15 / +30 / +90 días**.
+4. **Guardar fecha** aplica el cambio al instante; **Sin límite** elimina el vencimiento.
+5. La barra superior muestra un chip con el tiempo restante que lleva directo a la pestaña.
+
+Además puede usar todas las pestañas del administrador del negocio.
 
 ### Cliente
 
@@ -269,8 +291,10 @@ Todas respetan el ciclo de vida de Flutter, se desechan en `dispose()` y no bloq
 | `maxUsers` | number | Límite de clientes |
 | `checkinCode` | string | Código dentro del QR |
 | `contactInfo` | string | Contacto al expirar la prueba |
-| `trialExpiryDate` | string \| null | Espejo informativo de Remote Config |
-| `trialExpiryAt` | timestamp | Fecha usada por las reglas de Firestore |
+| `trialExpiryDate` | string \| null | Fecha de prueba en ISO 8601 (espejo legible) |
+| `trialExpiryAt` | timestamp | Fecha de prueba que aplican las reglas |
+| `trialUpdatedAt` | timestamp | Última modificación de la prueba |
+| `trialUpdatedBy` | string | UID del superadministrador que la modificó |
 
 El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` (o como URL externa). El selector acepta archivos de hasta 8 MB, reduce la imagen a 512 px de ancho y rechaza el resultado si supera 600 KB, para no acercarse al límite de 1 MiB por documento de Firestore.
 
@@ -318,13 +342,13 @@ El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` (o como U
 
 ### `admins/{uid}`
 
-`email`, `displayName`, `createdAt`, `updatedAt`. Determina el rol de administrador.
+`email`, `displayName`, `role`, `createdAt`, `updatedAt`. Determina el rol: `superadmin` para el dueño de la plataforma; cualquier otro valor (o la ausencia de `role`) es administrador del negocio.
 
 ---
 
 ## Reglas y permisos
 
-- `config`: lectura pública (branding en el login), escritura solo admin.
+- `config`: lectura pública (branding en el login). El administrador puede crear la configuración inicial y actualizar los campos del negocio, pero no `trial*`; borrar o cambiar la fecha de prueba queda reservado al superadministrador.
 - `users`: el cliente lee su perfil; el admin lee todos. El cliente solo puede crear su propio perfil (una vez, como `client`, con contadores a cero y correo sintético coherente) y cambiar `displayName`/`updatedAt`. El admin puede cambiar cualquier campo. Nadie borra perfiles.
 - `usernames`: se crea en la misma transacción que el perfil y nunca se modifica ni se borra.
 - `counters/clients`: solo se incrementa de uno en uno al crear un cliente y no puede superar `maxUsers`.
@@ -363,14 +387,14 @@ Cada negocio debe tener un **proyecto Firebase independiente** para aislar datos
 
    El asistente escribe `firebase.web.json`, crea `.firebaserc` y ajusta `firestore.database` en `firebase.json`. También puedes copiar `firebase.web.example.json` a `firebase.web.json` y rellenarlo a mano.
 
-4. Publica `trial_expiry_date` en Remote Config (por ejemplo `2026-12-31T23:59:59Z`).
+4. Opcional: publica `trial_expiry_date` en Remote Config (por ejemplo `2026-12-31T23:59:59Z`) como respaldo. La fecha efectiva se fija en Firestore desde la pestaña **Plataforma** del superadministrador.
 5. Despliega reglas e índices:
 
    ```bash
    firebase deploy --only firestore:rules,firestore:indexes --project nuevo-proyecto
    ```
 
-6. Crea el administrador (usuario de Auth + documento `admins/{uid}`), `config/main` y `counters/clients` como se explica en el paso 5 de la puesta en marcha.
+6. Crea el administrador (usuario de Auth + documento `admins/{uid}`) y, si corresponde, el superadministrador con `role: "superadmin"`; luego `config/main` y `counters/clients` como se explica en el paso 5 de la puesta en marcha.
 7. Compila y despliega la web con las credenciales del negocio:
 
    ```bash
@@ -424,7 +448,8 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 | `permission-denied` al leer `admins` o `config` | Reglas no desplegadas o falta `admins/{uid}` | Despliega reglas y crea el documento del admin |
 | `permission-denied` al registrarse | Falta `counters/clients`, la prueba venció o el correo no coincide con el usuario | Crea `counters/clients` con `count: 0`, revisa `trialExpiryAt` y el nombre de usuario |
 | Error de índice compuesto | Los índices aún se están creando | Despliega `firestore:indexes` y espera unos minutos |
-| La prueba se bloquea antes de tiempo | `trialExpiryAt` o `trial_expiry_date` vencidos | Actualiza ambos valores y publica Remote Config |
+| La prueba se bloquea antes de tiempo | `config/main.trialExpiryAt` vencido | Entra con el superadministrador y renuévala en la pestaña **Plataforma** |
+| El administrador no ve la pestaña **Plataforma** | `admins/{uid}.role` no es `superadmin` | Corrige el campo en Firestore y vuelve a iniciar sesión |
 | “El negocio alcanzó su límite de usuarios” | `config/main.maxUsers` alcanzado | Súbelo desde el panel de administración |
 | “Ese nombre de usuario ya está en uso” | Ya existe la cuenta o el perfil | Prueba otro usuario; revisa Auth/Firestore |
 | El logo no se guarda | La imagen supera 600 KB tras reducirla | Usa un logo más pequeño o una URL externa |
@@ -449,6 +474,8 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 - Firestore usa la base con **nombre** `default` en lugar de `(default)`, porque crear `(default)` por API exige plan Blaze. El identificador se repite en `AppConfig.firestoreDatabaseId` y `firebase.json`.
 - `functions/` se conserva como referencia opcional del backend original en TypeScript, pero `firebase.json` ya no lo despliega y la app no depende de él.
 - Las credenciales ya no viven en el repositorio: `lib/firebase_options.dart` las lee por `String.fromEnvironment` y `firebase.web.json` (ignorado por git) las inyecta con `--dart-define-from-file`. El CI usa la plantilla.
+- El rol de plataforma se guarda en `admins/{uid}.role = "superadmin"` y no en claims: así se puede cambiar desde la consola sin volver a iniciar sesión ni desplegar Functions. Los documentos sin `role` siguen siendo administradores del negocio.
+- La prueba pasó de Remote Config a Firestore (`config/main.trialExpiryAt`) para que el superadministrador pueda renovarla en caliente. Las reglas solo permiten tocar los campos `trial*` al superadministrador, y `AuthGate` escucha `config/main` para desbloquear la app en tiempo real.
 
 ---
 

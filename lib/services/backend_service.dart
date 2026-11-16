@@ -6,6 +6,7 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 import '../app_config.dart';
 import '../models/config_model.dart';
 import '../utils/codes.dart';
+import '../utils/trial.dart';
 
 /// Error de negocio con un mensaje listo para mostrar al usuario.
 class AppFailure implements Exception {
@@ -31,11 +32,14 @@ class TrialStatus {
   final int? daysRemaining;
 
   factory TrialStatus.fromMap(Map<String, dynamic> data) {
-    final rawExpiry = data['expiryDate'] as String?;
+    final rawExpiry = data['expiryDate'];
+    final expiry = parseTrialExpiry(rawExpiry is String ? rawExpiry : null);
     return TrialStatus(
-      active: data['active'] as bool? ?? true,
-      expiryDate: rawExpiry == null ? null : DateTime.tryParse(rawExpiry),
-      daysRemaining: (data['daysRemaining'] as num?)?.toInt(),
+      active: data['active'] as bool? ?? trialIsActive(expiry),
+      expiryDate: expiry,
+      daysRemaining:
+          (data['daysRemaining'] as num?)?.toInt() ??
+          trialDaysRemaining(expiry),
     );
   }
 
@@ -97,8 +101,7 @@ class BackendService {
         final counterSnapshot = await transaction.get(counterRef);
 
         final config = ConfigModel.fromDoc(configSnapshot.data());
-        final expiry = _parseDate(config.trialExpiryDate);
-        if (expiry != null && DateTime.now().toUtc().isAfter(expiry)) {
+        if (!trialIsActive(config.trialExpiry)) {
           throw AppFailure(
             'La prueba del negocio ha expirado. Contacta con el administrador.',
             code: 'trial_expired',
@@ -453,46 +456,44 @@ class BackendService {
   // Prueba del negocio
   // ---------------------------------------------------------------------------
 
-  /// Lee `trial_expiry_date` de Remote Config y, si no está disponible, usa el
-  /// espejo guardado en `config/main.trialExpiryDate`.
+  /// Estado de la prueba.
+  ///
+  /// Firestore es la fuente de verdad porque el superadministrador puede
+  /// renovarla desde la pestaña Plataforma. Remote Config se usa solo como
+  /// respaldo cuando `config/main` todavía no tiene una fecha (instalaciones
+  /// nuevas o migraciones).
   Future<TrialStatus> checkTrialStatus() async {
     DateTime? expiry;
 
     try {
-      final remoteConfig = FirebaseRemoteConfig.instance;
-      await remoteConfig.setConfigSettings(
-        RemoteConfigSettings(
-          fetchTimeout: const Duration(seconds: 5),
-          minimumFetchInterval: const Duration(hours: 1),
-        ),
-      );
-      await remoteConfig.fetchAndActivate();
-      expiry = _parseDate(remoteConfig.getString('trial_expiry_date'));
+      final snapshot = await _configRef.get();
+      expiry = trialExpiryFromMap(snapshot.data() ?? const {});
     } catch (_) {
-      // Sin Remote Config se usa el espejo de Firestore.
+      // Sin conexión con Firestore se intenta Remote Config.
     }
 
     if (expiry == null) {
       try {
-        final snapshot = await _configRef.get();
-        expiry = _parseDate(
-          ConfigModel.fromDoc(snapshot.data()).trialExpiryDate,
+        final remoteConfig = FirebaseRemoteConfig.instance;
+        await remoteConfig.setConfigSettings(
+          RemoteConfigSettings(
+            fetchTimeout: const Duration(seconds: 5),
+            minimumFetchInterval: const Duration(hours: 1),
+          ),
         );
+        await remoteConfig.fetchAndActivate();
+        expiry = parseTrialExpiry(remoteConfig.getString('trial_expiry_date'));
       } catch (_) {
-        // Sin conexión no se bloquea la app.
+        // Sin Remote Config no se bloquea la app.
       }
     }
 
     if (expiry == null) return TrialStatus.activeNow;
 
-    final now = DateTime.now().toUtc();
-    final active = now.isBefore(expiry);
-    final days = expiry.difference(now).inDays;
-
     return TrialStatus(
-      active: active,
+      active: trialIsActive(expiry),
       expiryDate: expiry,
-      daysRemaining: days < 0 ? 0 : days,
+      daysRemaining: trialDaysRemaining(expiry),
     );
   }
 
@@ -509,12 +510,6 @@ class BackendService {
       );
     }
     return user;
-  }
-
-  static DateTime? _parseDate(String? raw) {
-    final value = raw?.trim() ?? '';
-    if (value.isEmpty) return null;
-    return DateTime.tryParse(value)?.toUtc();
   }
 
   AppFailure _translate(FirebaseException error) {

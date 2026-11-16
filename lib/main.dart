@@ -167,8 +167,9 @@ class SetupRequiredApp extends StatelessWidget {
                         const SizedBox(height: 8),
                         const Text(
                           '• Authentication → habilita Correo/contraseña.\n'
-                          '• Firestore Database → crea la base de datos y despliega las reglas.\n'
-                          '• Remote Config → añade trial_expiry_date (ISO 8601).\n'
+                          '• Firestore Database → crea la base, despliega las reglas y siembra config/main.\n'
+                          '• Authentication → crea el admin y, si corresponde, el superadmin en admins/{uid}.\n'
+                          '• Remote Config (opcional) → trial_expiry_date como respaldo.\n'
                           '• Hosting → publica la carpeta build/web.\n'
                           'Todo funciona con el plan gratuito Spark, sin facturación.',
                           style: TextStyle(height: 1.6),

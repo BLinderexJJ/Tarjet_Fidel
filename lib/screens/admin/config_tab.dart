@@ -6,6 +6,7 @@ import '../../services/backend_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/logo_service.dart';
 import '../../utils/codes.dart';
+import '../../utils/trial.dart';
 import '../../widgets/app_animations.dart';
 import '../../widgets/logo_image.dart';
 
@@ -534,40 +535,81 @@ class _ConfigTabState extends State<ConfigTab> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF5F6FA),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Prueba del negocio',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                    Builder(
+                      builder: (context) {
+                        final trialExpiry = parseTrialExpiry(_trialExpiryDate);
+                        final trialActive = trialIsActive(trialExpiry);
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F6FA),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _trialExpiryDate?.trim().isNotEmpty == true
-                                ? 'Expira: $_trialExpiryDate'
-                                : 'Sin fecha de expiración configurada.',
-                            style: const TextStyle(
-                              color: Colors.black54,
-                              fontSize: 13,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    trialExpiry == null
+                                        ? Icons.all_inclusive_rounded
+                                        : trialActive
+                                        ? Icons.verified_user_rounded
+                                        : Icons.lock_clock_rounded,
+                                    size: 18,
+                                    color: trialExpiry == null
+                                        ? Colors.black54
+                                        : trialActive
+                                        ? const Color(0xFF10B981)
+                                        : const Color(0xFFB3261E),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Prueba del negocio',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                trialExpiry == null
+                                    ? 'Sin fecha de expiración configurada.'
+                                    : 'Expira: '
+                                          '${formatTrialExpiry(trialExpiry)} '
+                                          '(hora local)',
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              if (trialExpiry != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  trialRemainingLabel(trialExpiry),
+                                  style: TextStyle(
+                                    color: trialActive
+                                        ? const Color(0xFF10B981)
+                                        : const Color(0xFFB3261E),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Solo el superadministrador puede modificar '
+                                'la fecha desde la pestaña Plataforma.',
+                                style: TextStyle(
+                                  color: Colors.black45,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'La fecha real se controla con el parámetro '
-                            'trial_expiry_date de Firebase Remote Config.',
-                            style: TextStyle(
-                              color: Colors.black45,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                     Row(
