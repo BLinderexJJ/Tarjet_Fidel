@@ -40,4 +40,18 @@ class AppConfig {
   /// Firestore limita cada documento a 1 MiB y `config/main` guarda más datos,
   /// así que el logo se mantiene muy por debajo de ese límite.
   static const int maxLogoDataUriBytes = 600 * 1024; // 600 KB
+
+  /// Tamaño máximo del archivo de imagen del sello que se puede seleccionar.
+  static const int maxStampImageInputBytes = 8 * 1024 * 1024; // 8 MB
+  static const int maxStampImageInputMb = 8;
+
+  /// La imagen del sello se muestra a unos 50 px, así que basta con reducirla
+  /// a 192 px. El límite bajo deja margen en `config/main` para guardar también
+  /// el logo dentro del tope de 1 MiB por documento de Firestore.
+  static const int maxStampImageDataUriBytes = 160 * 1024; // 160 KB
+  static const int stampImageResizeWidth = 192;
+
+  /// Presupuesto máximo combinado de logo + sello ya codificados en base64.
+  /// 900 KB deja margen seguro bajo el límite de 1 MiB de Firestore.
+  static const int maxConfigImageDataLength = 900 * 1024;
 }

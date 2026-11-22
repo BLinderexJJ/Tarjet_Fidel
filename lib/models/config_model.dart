@@ -13,11 +13,18 @@ class ConfigModel {
     required this.maxUsers,
     required this.checkinCode,
     required this.contactInfo,
+    this.stampImage = '',
     this.trialExpiryDate,
   });
 
   final String businessName;
   final String logoUrl;
+
+  /// Imagen que se muestra dentro de los sellos válidos.
+  ///
+  /// Puede ser una URL `https://…` o una URL `data:image/…;base64,…` (Spark).
+  /// Si está vacía, los sellos usan el icono de check por defecto.
+  final String stampImage;
   final int stampsGoal;
   final String rewardDescription;
 
@@ -38,6 +45,7 @@ class ConfigModel {
     return ConfigModel(
       businessName: (data['businessName'] as String?) ?? defaultBusinessName,
       logoUrl: (data['logoUrl'] as String?) ?? '',
+      stampImage: (data['stampImage'] as String?) ?? '',
       stampsGoal: (data['stampsGoal'] as num?)?.toInt() ?? defaultStampsGoal,
       rewardDescription:
           (data['rewardDescription'] as String?) ?? defaultRewardDescription,
@@ -57,6 +65,7 @@ class ConfigModel {
     return {
       'businessName': businessName,
       'logoUrl': logoUrl,
+      'stampImage': stampImage,
       'stampsGoal': stampsGoal,
       'rewardDescription': rewardDescription,
       'themeColor': themeColor,
@@ -70,6 +79,7 @@ class ConfigModel {
   ConfigModel copyWith({
     String? businessName,
     String? logoUrl,
+    String? stampImage,
     int? stampsGoal,
     String? rewardDescription,
     String? themeColor,
@@ -81,6 +91,7 @@ class ConfigModel {
     return ConfigModel(
       businessName: businessName ?? this.businessName,
       logoUrl: logoUrl ?? this.logoUrl,
+      stampImage: stampImage ?? this.stampImage,
       stampsGoal: stampsGoal ?? this.stampsGoal,
       rewardDescription: rewardDescription ?? this.rewardDescription,
       themeColor: themeColor ?? this.themeColor,
@@ -119,6 +130,7 @@ class ConfigModel {
     return const ConfigModel(
       businessName: defaultBusinessName,
       logoUrl: '',
+      stampImage: '',
       stampsGoal: defaultStampsGoal,
       rewardDescription: defaultRewardDescription,
       themeColor: defaultThemeColor,

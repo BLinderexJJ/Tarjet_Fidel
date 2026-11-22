@@ -6,36 +6,69 @@ import 'package:file_picker/file_picker.dart';
 
 import '../app_config.dart';
 
-/// Selecciona el logo del negocio y lo convierte en una URL `data:`.
+/// Selecciona imágenes del negocio y las convierte en URL `data:`.
 ///
-/// En el plan Spark no hay Firebase Storage, así que la imagen se guarda como
-/// base64 dentro de `config/main.logoUrl`. Firestore limita cada documento a
-/// 1 MiB, por lo que la imagen se reduce a un máximo de 512 px de ancho y se
-/// rechaza si sigue siendo demasiado grande.
+/// En el plan Spark no hay Firebase Storage, así que el logo y la imagen del
+/// sello se guardan como base64 dentro de `config/main`. Firestore limita cada
+/// documento a 1 MiB, por lo que las imágenes se reducen antes de guardarse y
+/// se rechazan si siguen siendo demasiado grandes.
 class LogoService {
-  Future<String?> pickLogoAsDataUri() async {
-    final file = await FilePicker.pickFile(
+  /// Selecciona el logo del negocio (hasta 512 px y 600 KB).
+  Future<String?> pickLogoAsDataUri() {
+    return _pickImageAsDataUri(
       dialogTitle: 'Selecciona el logo del negocio',
+      maxInputBytes: AppConfig.maxLogoInputBytes,
+      maxInputMb: AppConfig.maxLogoInputMb,
+      maxDataUriBytes: AppConfig.maxLogoDataUriBytes,
+      resizeWidth: 512,
+      tooLargeMessage:
+          'La imagen es demasiado grande incluso después de reducirla. '
+          'Usa un logo más pequeño (máx. 600 KB).',
+    );
+  }
+
+  /// Selecciona la imagen que se muestra dentro de cada sello válido.
+  ///
+  /// Se reduce más que el logo porque solo se ve a unos 50 px en pantalla.
+  Future<String?> pickStampImageAsDataUri() {
+    return _pickImageAsDataUri(
+      dialogTitle: 'Selecciona la imagen del sello',
+      maxInputBytes: AppConfig.maxStampImageInputBytes,
+      maxInputMb: AppConfig.maxStampImageInputMb,
+      maxDataUriBytes: AppConfig.maxStampImageDataUriBytes,
+      resizeWidth: AppConfig.stampImageResizeWidth,
+      tooLargeMessage:
+          'La imagen del sello es demasiado grande incluso después de '
+          'reducirla. Usa una imagen más pequeña (máx. 160 KB).',
+    );
+  }
+
+  Future<String?> _pickImageAsDataUri({
+    required String dialogTitle,
+    required int maxInputBytes,
+    required int maxInputMb,
+    required int maxDataUriBytes,
+    required int resizeWidth,
+    required String tooLargeMessage,
+  }) async {
+    final file = await FilePicker.pickFile(
+      dialogTitle: dialogTitle,
       type: FileType.image,
     );
 
     if (file == null) return null;
 
     final length = await file.length();
-    if (length != null && length > AppConfig.maxLogoInputBytes) {
-      throw StateError(
-        'La imagen supera el límite de ${AppConfig.maxLogoInputMb} MB.',
-      );
+    if (length != null && length > maxInputBytes) {
+      throw StateError('La imagen supera el límite de $maxInputMb MB.');
     }
 
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) {
       throw StateError('No se pudo leer la imagen seleccionada.');
     }
-    if (bytes.length > AppConfig.maxLogoInputBytes) {
-      throw StateError(
-        'La imagen supera el límite de ${AppConfig.maxLogoInputMb} MB.',
-      );
+    if (bytes.length > maxInputBytes) {
+      throw StateError('La imagen supera el límite de $maxInputMb MB.');
     }
 
     final extension = (file.extension ?? 'png').toLowerCase();
@@ -46,16 +79,13 @@ class LogoService {
       _ => 'image/png',
     };
 
-    if (bytes.length <= AppConfig.maxLogoDataUriBytes) {
+    if (bytes.length <= maxDataUriBytes) {
       return 'data:$mimeType;base64,${base64Encode(bytes)}';
     }
 
-    final resized = await _resizeToPng(bytes, maxWidth: 512);
-    if (resized == null || resized.length > AppConfig.maxLogoDataUriBytes) {
-      throw StateError(
-        'La imagen es demasiado grande incluso después de reducirla. '
-        'Usa un logo más pequeño (máx. 600 KB).',
-      );
+    final resized = await _resizeToPng(bytes, maxWidth: resizeWidth);
+    if (resized == null || resized.length > maxDataUriBytes) {
+      throw StateError(tooLargeMessage);
     }
 
     return 'data:image/png;base64,${base64Encode(resized)}';

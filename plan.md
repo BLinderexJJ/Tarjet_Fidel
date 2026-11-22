@@ -19,9 +19,10 @@
 - `flutter_animate` más un kit propio en `lib/widgets/app_animations.dart` y `lib/widgets/confetti_burst.dart`.
 - `Reveal` y `StaggeredReveal` para entradas suaves y listas escalonadas.
 - `HoverLift` y `Pulse` para tarjetas, insignias y avisos.
-- `ShimmerHighlight` para el código de check-in y el logo.
+- `ShimmerHighlight` para el código de check-in, el logo y la imagen del sello.
 - `AnimatedIndexedStack` para cambiar de pestaña sin perder estado.
 - `ConfettiBurst` y `CelebrationOnChange` al aprobar solicitudes, canjear premios o subir sellos.
+- Sellos adaptativos (hasta 52 px) con contraste alto, borde grueso y brillo en los válidos; el último sello nuevo da un "pop" elástico salvo con movimiento reducido.
 - `BrandBackground` anima el degradado y las luces del login, splash y bloqueo.
 - `ConfigMetaSync` sincroniza el título, la descripción y el `theme-color` del navegador con `config/main`.
 
@@ -57,7 +58,9 @@
 
 ### `config/main`
 
-`businessName`, `logoUrl`, `stampsGoal`, `rewardDescription`, `themeColor`, `maxUsers`, `checkinCode`, `contactInfo`, `trialExpiryDate`, `trialExpiryAt`, `trialUpdatedAt`, `trialUpdatedBy`.
+`businessName`, `logoUrl`, `stampImage`, `stampsGoal`, `rewardDescription`, `themeColor`, `maxUsers`, `checkinCode`, `contactInfo`, `trialExpiryDate`, `trialExpiryAt`, `trialUpdatedAt`, `trialUpdatedBy`.
+
+`stampImage` acepta URL externa o `data:image/...;base64,...`; si está vacío los sellos válidos muestran el icono de check.
 
 ### `users/{uid}`
 
@@ -200,8 +203,8 @@
 - [x] Login admin
 - [x] Solicitudes pendientes en tiempo real
 - [x] Aprobar/rechazar con cantidad de sellos editable
-- [x] Configuración (nombre, logo, meta, premio, color, límite, contacto)
-- [x] Logo en base64 (sin Storage)
+- [x] Configuración (nombre, logo, imagen del sello, meta, premio, color, límite, contacto)
+- [x] Logo e imagen del sello en base64 (sin Storage)
 - [x] QR de check-in
 - [x] Actualizaciones sin recargar
 
@@ -263,12 +266,23 @@
 - [x] Pruebas de validación (6 nuevas; 40 en total)
 - [x] Verificación REST en producción: 7/7 comprobaciones correctas y limpieza de documentos temporales
 
+### Fase 12: Imagen del sello y sellos más visibles
+
+- [x] `stampImage` en `ConfigModel` (lectura, mapa, `copyWith` y valores por defecto)
+- [x] `LogoService.pickStampImageAsDataUri()` con reducción a 192 px y tope de 160 KB
+- [x] Límite combinado de 900 KB entre logo y sello antes de guardar `config/main`
+- [x] Selector de imagen del sello en **Configuración** (vista previa circular, URL, "Elegir imagen" y "Quitar")
+- [x] Sellos rediseñados: tamaño adaptativo hasta 52 px, contraste alto, brillo y numeración clara
+- [x] Sello válido con imagen: foto recortada en círculo y palomita verde superpuesta con borde blanco
+- [x] Animación del último sello respetando `MediaQuery.disableAnimations`
+- [x] Pruebas del modelo y del render con/sin imagen (4 nuevas; 44 en total)
+
 ## Estado de implementación
 
 Verificado y desplegado:
 
 - `flutter analyze` → sin incidencias.
-- `flutter test` → 40 pruebas superadas (modelos, códigos, fechas de prueba, validación de admins, animaciones y accesibilidad).
+- `flutter test` → 44 pruebas superadas (modelos, códigos, fechas de prueba, validación de admins, animaciones, accesibilidad y render de sellos).
 - `flutter build web --release --no-wasm-dry-run --dart-define-from-file=firebase.web.json` → compilación correcta.
 - Proyecto Firebase de referencia creado y app web registrada.
 - Credenciales reales en `firebase.web.json` (ignorado por git); `lib/firebase_options.dart` las lee por `dart-define`.
@@ -295,6 +309,14 @@ Alta de administradores:
 - Si falla la escritura de `admins/{uid}`, se intenta borrar la cuenta de Auth creada y se muestra el error traducido al usuario.
 - Las reglas de `admins` permiten al superadmin crear/listar/editar/borrar solo cuentas `role: "admin"`; le impiden crear superadmins, borrar su propio documento y modificar otros superadmins. El admin del negocio no puede listar ni escribir en `admins`.
 - Verificación REST en producción (7/7): crear admin, leerlo, actualizarlo y borrarlo como superadmin → permitido; crear admin o listar como negocio → denegado; crear superadmin o borrar la propia cuenta → denegado. Los documentos temporales se eliminaron.
+
+Imagen del sello:
+
+- El administrador sube o pega la URL de la imagen del sello desde **Configuración**; se guarda en `config/main.stampImage` como data URI (Spark, sin Storage) o como URL externa.
+- Cada sello válido muestra la imagen recortada en círculo con una palomita verde encima; los pendientes siguen numerados y los sellos sin imagen configurada usan el check de siempre.
+- El selector reduce la imagen a 192 px y rechaza más de 160 KB. El guardado comprueba que logo + sello no pasen de 900 KB codificados, con un margen seguro bajo el límite de 1 MiB de Firestore.
+- Los sellos crecen hasta 52 px según el ancho disponible, con borde más grueso, brillo y contraste alto; en móvil se distribuyen en varias filas.
+- La palomita y el "pop" del último sello respetan el movimiento reducido; las etiquetas semánticas indican «Sello N válido/pendiente».
 
 Mejoras de interfaz y accesibilidad:
 
@@ -330,10 +352,11 @@ Pendiente (opcional):
 4. Se añadió `rejectStampRequest` y la colección `redemptions`.
 5. El límite de usuarios cuenta solo clientes (`role: "client"`).
 6. `config` es de lectura pública para el branding previo al login.
-7. El logo se guarda en base64 dentro de `config/main.logoUrl`, con reducción a 512 px y tope de 600 KB.
+7. El logo y la imagen del sello se guardan en base64 dentro de `config/main` (`logoUrl` y `stampImage`), con reducción a 512 px/192 px y topes de 600 KB/160 KB.
 8. Firestore usa la base con nombre `default` (no `(default)`) porque crear `(default)` por API exige plan Blaze.
 9. El escáner QR requiere HTTPS o localhost; la entrada manual es el fallback.
 10. `functions/` se conserva como referencia opcional del backend original, pero no se despliega ni es necesario.
 11. El rol de plataforma vive en `admins/{uid}.role = "superadmin"` en lugar de claims, para poder cambiarlo desde la consola sin redeploy ni re-login forzado.
 12. La prueba pasó de Remote Config a Firestore (`config/main.trialExpiryAt`) para que el superadministrador pueda renovarla en caliente; Remote Config queda como respaldo.
 13. El alta de administradores adicionales se hace sin Cloud Functions: app secundaria de Auth para crear la cuenta + escritura privilegiada de `admins/{uid}` con rollback. Las reglas impiden la escalada de roles.
+14. La imagen del sello va en el mismo documento `config/main` que el logo; por eso se reduce más y el guardado valida el tamaño combinado de ambas imágenes.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app_config.dart';
 import '../../models/config_model.dart';
 import '../../services/backend_service.dart';
 import '../../services/firestore_service.dart';
@@ -27,6 +28,7 @@ class _ConfigTabState extends State<ConfigTab> {
 
   final _businessName = TextEditingController();
   final _logoUrl = TextEditingController();
+  final _stampImageUrl = TextEditingController();
   final _stampsGoal = TextEditingController();
   final _rewardDescription = TextEditingController();
   final _maxUsers = TextEditingController();
@@ -47,9 +49,11 @@ class _ConfigTabState extends State<ConfigTab> {
   bool _loading = true;
   bool _saving = false;
   bool _uploading = false;
+  bool _uploadingStamp = false;
   String? _loadError;
   String? _trialExpiryDate;
   String? _logoDataUri;
+  String? _stampDataUri;
   String _checkinCode = '';
 
   @override
@@ -62,6 +66,7 @@ class _ConfigTabState extends State<ConfigTab> {
   void dispose() {
     _businessName.dispose();
     _logoUrl.dispose();
+    _stampImageUrl.dispose();
     _stampsGoal.dispose();
     _rewardDescription.dispose();
     _maxUsers.dispose();
@@ -85,6 +90,10 @@ class _ConfigTabState extends State<ConfigTab> {
         final isEmbedded = logo.startsWith('data:image/');
         _logoDataUri = isEmbedded ? logo : null;
         _logoUrl.text = isEmbedded ? '' : logo;
+        final stamp = config.stampImage.trim();
+        final stampEmbedded = stamp.startsWith('data:image/');
+        _stampDataUri = stampEmbedded ? stamp : null;
+        _stampImageUrl.text = stampEmbedded ? '' : stamp;
         _stampsGoal.text = '${config.stampsGoal}';
         _rewardDescription.text = config.rewardDescription;
         _maxUsers.text = '${config.maxUsers}';
@@ -150,6 +159,29 @@ class _ConfigTabState extends State<ConfigTab> {
     }
   }
 
+  Future<void> _uploadStampImage() async {
+    if (_uploadingStamp) return;
+    setState(() => _uploadingStamp = true);
+    try {
+      final dataUri = await _logoService.pickStampImageAsDataUri();
+      if (dataUri != null && mounted) {
+        setState(() {
+          _stampDataUri = dataUri;
+          _stampImageUrl.clear();
+        });
+        _notify('Imagen del sello cargada. Guarda los cambios para aplicarla.');
+      }
+    } catch (error) {
+      _notify(
+        error is StateError
+            ? error.message
+            : 'No se pudo cargar la imagen del sello. Inténtalo de nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingStamp = false);
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -163,9 +195,21 @@ class _ConfigTabState extends State<ConfigTab> {
           ? generateCheckinCode()
           : _checkinCode.trim().toUpperCase();
 
+      final logo = _logoDataUri ?? _logoUrl.text.trim();
+      final stampImage = _stampDataUri ?? _stampImageUrl.text.trim();
+      if (logo.length + stampImage.length >
+          AppConfig.maxConfigImageDataLength) {
+        _notify(
+          'Las imágenes son demasiado grandes para guardarlas juntas. '
+          'Usa imágenes más pequeñas o URLs externas.',
+        );
+        return;
+      }
+
       final config = ConfigModel(
         businessName: _businessName.text.trim(),
-        logoUrl: (_logoDataUri ?? _logoUrl.text.trim()),
+        logoUrl: logo,
+        stampImage: stampImage,
         stampsGoal: int.parse(_stampsGoal.text.trim()),
         rewardDescription: _rewardDescription.text.trim(),
         themeColor: _normalizedColor(),
@@ -513,6 +557,113 @@ class _ConfigTabState extends State<ConfigTab> {
                           ? 'Describe el premio.'
                           : null,
                     ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Imagen del sello',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Aparece dentro de cada sello válido con una palomita '
+                      'encima. Si la dejas vacía se usa el icono de check.',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerHighlight(
+                          enabled: _stampDataUri != null,
+                          child: Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5F6FA),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: LogoImage(
+                              source:
+                                  _stampDataUri ?? _stampImageUrl.text.trim(),
+                              fit: BoxFit.cover,
+                              fallback: const Icon(
+                                Icons.verified_rounded,
+                                color: Colors.black38,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _stampImageUrl,
+                            decoration: const InputDecoration(
+                              labelText: 'URL de la imagen del sello',
+                              hintText: 'https://… o usa "Elegir imagen"',
+                              prefixIcon: Icon(Icons.link_rounded),
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => setState(() {
+                              _stampDataUri = null;
+                            }),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          height: 56,
+                          child: OutlinedButton.icon(
+                            onPressed: _uploadingStamp
+                                ? null
+                                : _uploadStampImage,
+                            icon: _uploadingStamp
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.verified_rounded),
+                            label: Text(
+                              _uploadingStamp ? 'Cargando…' : 'Elegir imagen',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_stampDataUri != null ||
+                        _stampImageUrl.text.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 18,
+                            color: Color(0xFF10B981),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _stampDataUri != null
+                                  ? 'Imagen del sello cargada y lista para guardar.'
+                                  : 'Imagen del sello configurada por URL.',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _stampDataUri = null;
+                              _stampImageUrl.clear();
+                            }),
+                            child: const Text('Quitar'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

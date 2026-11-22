@@ -195,26 +195,52 @@ class LoyaltyCard extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 20),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: List.generate(goal, (index) {
-                    final filled = index < stamps;
-                    final isLastFilled = filled && index == stamps - 1;
-                    Widget stamp = _Stamp(filled: filled, index: index + 1);
-                    if (animateStamps && isLastFilled && !reduceMotion) {
-                      stamp = stamp
-                          .animate()
-                          .scale(
-                            begin: const Offset(0.3, 0.3),
-                            end: const Offset(1, 1),
-                            duration: 450.ms,
-                            curve: Curves.elasticOut,
-                          )
-                          .fadeIn(duration: 200.ms);
-                    }
-                    return stamp;
-                  }),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    const spacing = 10.0;
+                    const wantedSize = 52.0;
+                    final available = constraints.maxWidth.isFinite
+                        ? constraints.maxWidth
+                        : wantedSize * 5;
+                    final perRow =
+                        ((available + spacing) / (wantedSize + spacing))
+                            .floor()
+                            .clamp(1, goal)
+                            .toInt();
+                    final size = ((available - spacing * (perRow - 1)) / perRow)
+                        .clamp(32.0, wantedSize)
+                        .toDouble();
+
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: List.generate(goal, (index) {
+                        final filled = index < stamps;
+                        final isLastFilled = filled && index == stamps - 1;
+                        Widget stamp = _Stamp(
+                          filled: filled,
+                          index: index + 1,
+                          size: size,
+                          imageSource: config.stampImage,
+                          accent: dark,
+                        );
+                        if (animateStamps && isLastFilled && !reduceMotion) {
+                          stamp = stamp
+                              .animate()
+                              .scale(
+                                begin: const Offset(0.3, 0.3),
+                                end: const Offset(1, 1),
+                                duration: 450.ms,
+                                curve: Curves.elasticOut,
+                              )
+                              .fadeIn(duration: 200.ms);
+                        }
+                        return stamp;
+                      }),
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -287,43 +313,118 @@ class _Logo extends StatelessWidget {
 }
 
 class _Stamp extends StatelessWidget {
-  const _Stamp({required this.filled, required this.index});
+  const _Stamp({
+    required this.filled,
+    required this.index,
+    required this.size,
+    required this.imageSource,
+    required this.accent,
+  });
 
   final bool filled;
   final int index;
+  final double size;
+  final String imageSource;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: prefersReducedMotion(context)
-          ? Duration.zero
-          : const Duration(milliseconds: 350),
-      curve: Curves.easeOut,
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: filled ? Colors.white : Colors.white.withValues(alpha: 0.10),
-        border: Border.all(
-          color: filled ? Colors.white : Colors.white.withValues(alpha: 0.35),
-          width: 1.5,
-        ),
-      ),
-      child: Center(
-        child: filled
-            ? const Icon(
-                Icons.check_rounded,
-                size: 18,
-                color: Color(0xFF4F46E5),
-              )
-            : Text(
-                '$index',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+    final reduceMotion = prefersReducedMotion(context);
+    final hasImage = filled && imageSource.trim().isNotEmpty;
+    final checkColor = Color.lerp(accent, Colors.black, 0.45) ?? accent;
+    final badgeSize = size * 0.42;
+
+    return Semantics(
+      key: Key('stamp_$index'),
+      label: filled ? 'Sello $index válido' : 'Sello $index pendiente',
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 350),
+            curve: Curves.easeOut,
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: filled
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.12),
+              border: Border.all(
+                color: filled
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.55),
+                width: filled ? 2.5 : 1.5,
+              ),
+              boxShadow: filled
+                  ? [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: ClipOval(
+              child: hasImage
+                  ? LogoImage(
+                      source: imageSource,
+                      fit: BoxFit.cover,
+                      fallback: Icon(
+                        Icons.verified_rounded,
+                        size: size * 0.5,
+                        color: checkColor,
+                      ),
+                    )
+                  : Center(
+                      child: filled
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: size * 0.56,
+                              color: checkColor,
+                            )
+                          : Text(
+                              '$index',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontSize: size * 0.36,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                    ),
+            ),
+          ),
+          if (hasImage)
+            Positioned(
+              right: -size * 0.05,
+              top: -size * 0.05,
+              child: Container(
+                key: Key('stamp_${index}_check'),
+                width: badgeSize,
+                height: badgeSize,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.check_rounded,
+                  size: badgeSize * 0.72,
+                  color: Colors.white,
                 ),
               ),
+            ),
+        ],
       ),
     );
   }

@@ -17,7 +17,7 @@ Hay una instancia de referencia en **https://tarjet-fidel-app.web.app** (demo de
 | Cuenta de administrador | ✅ creada (`admins/{uid}`) |
 | Cuenta de superadministrador | ✅ creada (`admins/{uid}` con `role: "superadmin"`) |
 | Cloud Functions | ➖ no se usan (requieren Blaze) |
-| Storage (logo) | ➖ no se usa (requiere Blaze); el logo va en base64 |
+| Storage (logo e imagen del sello) | ➖ no se usa (requiere Blaze); ambas imágenes van en base64 |
 | App Check | ➖ opcional, sin registrar |
 
 > **Nota sobre la base de datos.** Firestore crea por defecto la base `(default)`, pero crearla por API exige facturación. Para funcionar en el plan Spark el proyecto usa una base con **nombre** `default` (sin paréntesis). Ese identificador está en dos sitios y debe coincidir siempre: `AppConfig.firestoreDatabaseId` y `firestore.database` de `firebase.json`. Si algún día se migra a `(default)`, cambia los dos.
@@ -53,7 +53,7 @@ tarjet_fidel/
 ├─ lib/
 │  ├─ main.dart                     Arranque, Firebase, App Check y tema dinámico
 │  ├─ firebase_options.dart         Credenciales inyectadas por dart-define
-│  ├─ app_config.dart               Base de datos, dominio sintético, límites del logo
+│  ├─ app_config.dart               Base de datos, dominio sintético, límites de imagen
 │  ├─ theme.dart                    Tema y fondo de marca animado
 │  ├─ models/                       ConfigModel, UserModel, StampRequestModel, AdminRole, AdminAccount
 │  ├─ services/
@@ -61,7 +61,7 @@ tarjet_fidel/
 │  │  ├─ admin_management_service.dart  Alta de admins de negocio por el superadministrador
 │  │  ├─ backend_service.dart       Transacciones: solicitudes, aprobación, canje, prueba
 │  │  ├─ firestore_service.dart     Lecturas en tiempo real y guardado de configuración
-│  │  └─ logo_service.dart          Selector de imagen y conversión a base64
+│  │  └─ logo_service.dart          Selectores de logo y sello, conversión a base64
 │  ├─ screens/                      Acceso, cliente, admin, plataforma (con alta de admins) y bloqueo de prueba
 │  ├─ widgets/                      Tarjeta, QR, escáner, animaciones y confeti
 │  └─ utils/                        Códigos, fechas de prueba, validación de admins y metadatos del navegador
@@ -244,7 +244,7 @@ La app activa App Check solo si se compiló con `RECAPTCHA_SITE_KEY`; sin esa va
 2. Pestaña **QR**: genera o copia el código de check-in y muestra el QR en el mostrador.
 3. Pestaña **Solicitudes**: aparecen en tiempo real. Aprueba con la cantidad de sellos editable o rechaza.
 4. Pestaña **Clientes**: busca clientes, consulta su progreso y canjea premios (reinicia sellos y deja registro en `redemptions`).
-5. Pestaña **Configuración**: nombre, logo, meta de sellos, premio, color, límite de usuarios y contacto. La fecha de la prueba solo se muestra; no se edita aquí.
+5. Pestaña **Configuración**: nombre, logo, imagen del sello, meta de sellos, premio, color, límite de usuarios y contacto. La fecha de la prueba solo se muestra; no se edita aquí.
 
 ### Superadministrador
 
@@ -262,8 +262,9 @@ Además puede usar todas las pestañas del administrador del negocio.
 1. Se registra con usuario y contraseña de 6 dígitos.
 2. Escanea el QR del negocio o introduce el código manualmente.
 3. Se crea una solicitud pendiente; el mensaje confirma que debe esperar la aprobación.
-4. Cuando el administrador aprueba, los sellos aparecen animados en tiempo real.
-5. Al completar la meta, la tarjeta muestra el premio listo.
+4. Cuando el administrador aprueba, los sellos aparecen animados en tiempo real. Si el negocio configuró una imagen de sello, los sellos válidos la muestran con una palomita verde encima; si no, muestran el icono de check.
+5. Los sellos se adaptan al ancho de la pantalla (hasta 52 px) para que se vean mejor: los válidos son blancos con borde grueso y brillo, y los pendientes llevan su número.
+6. Al completar la meta, la tarjeta muestra el premio listo.
 
 ### Recuperar la contraseña del administrador
 
@@ -281,7 +282,7 @@ La interfaz usa `flutter_animate` y un pequeño kit propio en `lib/widgets/`:
 | `StaggeredReveal` | Listas de solicitudes, clientes y visitas | Cada fila entra un poco después que la anterior |
 | `HoverLift` | Tarjetas y filas | Se elevan y escalan al pasar el ratón |
 | `Pulse` | Logo, insignias y avisos | Pulso continuo y discreto |
-| `ShimmerHighlight` | Código de check-in y logo | Brillo que recorre el contenido |
+| `ShimmerHighlight` | Código de check-in, logo e imagen del sello | Brillo que recorre el contenido |
 | `AnimatedIndexedStack` | Panel del administrador | Fundido al cambiar de pestaña sin perder estado |
 | `ConfettiBurst` | Aprobar solicitud y canjear premio | Confeti de una sola vez |
 | `CelebrationOnChange` | Tarjeta del cliente | Confeti cuando suben los sellos |
@@ -299,6 +300,7 @@ Todas respetan el ciclo de vida de Flutter, se desechan en `dispose()` y no bloq
 | --- | --- | --- |
 | `businessName` | string | Nombre del negocio |
 | `logoUrl` | string | URL `https://…` o `data:image/…;base64,…` |
+| `stampImage` | string | Imagen de los sellos válidos: URL o `data:image/…;base64,…`; vacío = check por defecto |
 | `stampsGoal` | number | Sellos para el premio |
 | `rewardDescription` | string | Texto del premio |
 | `themeColor` | string | Color `#RRGGBB` |
@@ -310,7 +312,7 @@ Todas respetan el ciclo de vida de Flutter, se desechan en `dispose()` y no bloq
 | `trialUpdatedAt` | timestamp | Última modificación de la prueba |
 | `trialUpdatedBy` | string | UID del superadministrador que la modificó |
 
-El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` (o como URL externa). El selector acepta archivos de hasta 8 MB, reduce la imagen a 512 px de ancho y rechaza el resultado si supera 600 KB, para no acercarse al límite de 1 MiB por documento de Firestore.
+El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` y la imagen del sello en `stampImage` (o como URL externa en cualquier caso). El selector del logo acepta archivos de hasta 8 MB, reduce la imagen a 512 px de ancho y rechaza el resultado si supera 600 KB. El selector del sello usa el mismo límite de entrada, reduce a 192 px y rechaza más de 160 KB. El guardado comprueba además que logo + sello no superen 900 KB codificados, para no acercarse al límite de 1 MiB por documento de Firestore.
 
 ### `users/{uid}`
 
@@ -469,6 +471,7 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 | “El negocio alcanzó su límite de usuarios” | `config/main.maxUsers` alcanzado | Súbelo desde el panel de administración |
 | “Ese nombre de usuario ya está en uso” | Ya existe la cuenta o el perfil | Prueba otro usuario; revisa Auth/Firestore |
 | El logo no se guarda | La imagen supera 600 KB tras reducirla | Usa un logo más pequeño o una URL externa |
+| La imagen del sello no se guarda | Supera 160 KB tras reducirla, o logo + sello superan 900 KB | Usa una imagen más pequeña, otra URL o quita una de las dos |
 | La cámara no abre | Contexto no seguro o permiso denegado | Usa HTTPS/localhost y la entrada manual |
 | El admin no ve el panel | Falta `admins/{uid}` | Créalo con el UID correcto y vuelve a iniciar sesión |
 | `403 This API method requires billing` al desplegar Firestore | Firebase intenta crear `(default)` | Mantén `firestore.database` en `firebase.json` (base con nombre `default`) |
@@ -481,7 +484,7 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 - `html5_qrcode` no existe en pub.dev; se sustituyó por `mobile_scanner` (BarcodeDetector/zxing-wasm en web).
 - **Sin Cloud Functions ni Storage**: ambos exigen el plan Blaze. Las seis operaciones de negocio se movieron a transacciones de Firestore en el cliente (`lib/services/backend_service.dart`) y las reglas son la autoridad anti-fraude.
 - El registro de clientes se hace en el cliente: `createUserWithEmailAndPassword` y, en una transacción, `users/{uid}`, `usernames/{username}` y el incremento de `counters/clients`. Si la transacción falla, la cuenta de Auth se elimina.
-- El logo se guarda en base64 dentro de `config/main.logoUrl`; no hay bucket de Storage.
+- El logo y la imagen del sello se guardan en base64 dentro de `config/main` (`logoUrl` y `stampImage`); no hay bucket de Storage.
 - Se añadió `pending_requests`, `rate_limits`, `counters/clients` y `usernames` para que las reglas puedan imponer anti-duplicado, rate limit, límite de usuarios y unicidad sin Functions.
 - `getAfter()` se usa para comprobar escrituras de la misma transacción (`stamp_requests` ↔ `pending_requests`, `counters` ↔ `users`), porque `exists()`/`get()` no ven los cambios aún no confirmados.
 - Se añadió la colección `redemptions` para auditar los canjes de premios.

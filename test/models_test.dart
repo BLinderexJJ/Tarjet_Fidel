@@ -31,6 +31,22 @@ void main() {
       expect(config.toMap()['maxUsers'], 120);
     });
 
+    test('la imagen del sello es opcional y se guarda en el mapa', () {
+      const uri = 'data:image/png;base64,AAAA';
+      final empty = ConfigModel.fromMap(const {});
+      final config = ConfigModel.fromMap(const {'stampImage': uri});
+
+      expect(empty.stampImage, isEmpty);
+      expect(ConfigModel.defaults().stampImage, isEmpty);
+      expect(config.stampImage, uri);
+      expect(config.toMap()['stampImage'], uri);
+      expect(config.copyWith().stampImage, uri);
+      expect(
+        config.copyWith(stampImage: 'https://ejemplo.com/sello.png').stampImage,
+        'https://ejemplo.com/sello.png',
+      );
+    });
+
     test('no lanza con un color inválido', () {
       final config = ConfigModel.fromMap(const {'themeColor': 'no-es-color'});
       expect(config.color, const Color(0xFF4F46E5));
