@@ -24,8 +24,8 @@ Hay una instancia de referencia en **https://tarjet-fidel-app.web.app** (demo de
 
 ## Roles
 
-- **Superadministrador**: dueño de la plataforma (normalmente el programador). Se identifica con `admins/{uid}.role = "superadmin"`. Usa todas las funciones del administrador del negocio y, además, ve la pestaña **Plataforma**, donde consulta la fecha exacta de vencimiento de la prueba y la renueva o la quita. Puede entrar al panel aunque la prueba esté vencida, porque desde ahí la reactiva.
-- **Administrador**: dueño o encargado del negocio. Inicia sesión con correo y contraseña reales. Ve solicitudes pendientes en tiempo real, aprueba o rechaza visitas, ajusta la cantidad de sellos, gestiona clientes, canjea premios, edita la configuración del negocio y muestra el QR de check-in. No puede cambiar la fecha de la prueba.
+- **Superadministrador**: dueño de la plataforma (normalmente el programador). Se identifica con `admins/{uid}.role = "superadmin"`. Usa todas las funciones del administrador del negocio y, además, ve la pestaña **Plataforma**, donde consulta la fecha exacta de vencimiento de la prueba, la renueva o la quita y da de alta administradores de negocio adicionales. Puede entrar al panel aunque la prueba esté vencida, porque desde ahí la reactiva.
+- **Administrador**: dueño o encargado del negocio. Inicia sesión con correo y contraseña reales. Ve solicitudes pendientes en tiempo real, aprueba o rechaza visitas, ajusta la cantidad de sellos, gestiona clientes, canjea premios, edita la configuración del negocio y muestra el QR de check-in. No puede cambiar la fecha de la prueba ni crear otros administradores.
 - **Cliente**: se registra con un nombre de usuario único y una contraseña de exactamente 6 dígitos. Internamente se usa el correo sintético `cliente_<usuario>@tarjetfidel.local`. Ve su tarjeta animada, escanea el QR del negocio (o introduce el código manualmente) y consulta su historial.
 
 Un documento `admins/{uid}` sin campo `role` se sigue tratando como administrador del negocio, para no romper instalaciones anteriores.
@@ -43,6 +43,7 @@ Sin Cloud Functions, la lógica de negocio vive en transacciones de Firestore ej
 - Límite de clientes configurable con `config/main.maxUsers` (por defecto 50), controlado con `counters/clients`.
 - Prueba controlada desde Firestore (`config/main.trialExpiryAt`) y reforzada por las reglas; Remote Config (`trial_expiry_date`) solo actúa como respaldo cuando Firestore no tiene fecha.
 - Solo el superadministrador puede escribir los campos `trialExpiryAt`, `trialExpiryDate`, `trialUpdatedAt` y `trialUpdatedBy`; el guardado normal de configuración del negocio no los toca.
+- Solo el superadministrador puede crear, listar, editar o borrar documentos `admins`, y siempre con `role: "admin"`: no puede crear otro superadministrador ni borrar o degradar su propia cuenta. El alta ocurre en dos pasos (cuenta de Auth con una app secundaria + documento con la sesión privilegiada), sin Cloud Functions.
 - Los clientes solo pueden crear su perfil con el correo sintético que corresponde a su nombre de usuario y con los contadores a cero.
 
 ## Estructura
@@ -54,15 +55,16 @@ tarjet_fidel/
 │  ├─ firebase_options.dart         Credenciales inyectadas por dart-define
 │  ├─ app_config.dart               Base de datos, dominio sintético, límites del logo
 │  ├─ theme.dart                    Tema y fondo de marca animado
-│  ├─ models/                       ConfigModel, UserModel, StampRequestModel, AdminRole
+│  ├─ models/                       ConfigModel, UserModel, StampRequestModel, AdminRole, AdminAccount
 │  ├─ services/
 │  │  ├─ auth_service.dart          Registro/login, reset del admin y rollback de Auth
+│  │  ├─ admin_management_service.dart  Alta de admins de negocio por el superadministrador
 │  │  ├─ backend_service.dart       Transacciones: solicitudes, aprobación, canje, prueba
 │  │  ├─ firestore_service.dart     Lecturas en tiempo real y guardado de configuración
 │  │  └─ logo_service.dart          Selector de imagen y conversión a base64
-│  ├─ screens/                      Acceso, cliente, admin, plataforma y bloqueo de prueba
+│  ├─ screens/                      Acceso, cliente, admin, plataforma (con alta de admins) y bloqueo de prueba
 │  ├─ widgets/                      Tarjeta, QR, escáner, animaciones y confeti
-│  └─ utils/                        Códigos, fechas de prueba y metadatos del navegador
+│  └─ utils/                        Códigos, fechas de prueba, validación de admins y metadatos del navegador
 ├─ tool/configure_firebase.mjs      Asistente de credenciales por negocio
 ├─ .github/workflows/flutter.yml    CI: analyze + test + build web
 ├─ firebase.web.example.json        Plantilla sin credenciales
@@ -176,9 +178,20 @@ Con eso el administrador ya puede entrar y el panel permite terminar de configur
 
 #### Crear el superadministrador
 
-Repite los pasos con la cuenta del programador, pero guarda `role: "superadmin"` en `admins/{uid}`. Esa cuenta verá la pestaña **Plataforma** y podrá renovar la prueba incluso si ya venció. El documento de `admins` no se puede escribir desde la app: créalo desde la consola o con el script heredado.
+Repite los pasos con la cuenta del programador, pero guarda `role: "superadmin"` en `admins/{uid}`. Esa cuenta verá la pestaña **Plataforma** y podrá renovar la prueba incluso si ya venció. El primer administrador y el superadministrador se crean desde la consola (o con el script heredado), porque nadie tiene permisos antes de existir.
 
 > Alternativa heredada: `functions/scripts/create-admin.mjs` crea la cuenta, el documento `admins`, los claims y siembra `config/main` usando credenciales locales de Google Cloud. Acepta `--role superadmin`. Funciona sin facturación, pero no es necesario.
+
+#### Crear administradores adicionales desde la app
+
+Una vez creado el superadministrador, ya no hace falta volver a la consola: en la pestaña **Plataforma** → **Administradores de negocio** puede dar de alta a todos los encargados que necesite.
+
+1. Rellena **nombre visible**, **correo**, **contraseña** (mínimo 8 caracteres, con letras y números) y su confirmación.
+2. Pulsa **Crear administrador**. La app crea la cuenta en Firebase Auth usando una app secundaria, de modo que la sesión del superadministrador no se cierra, y escribe `admins/{uid}` con `role: "admin"` y las marcas de tiempo del servidor.
+3. Si falla la escritura del documento, se elimina la cuenta de Auth recién creada para no dejar usuarios sin rol.
+4. La lista **Cuentas actuales** se actualiza en tiempo real y distingue `SUPERADMIN` de `NEGOCIO`.
+
+El correo debe ser real: se rechazan los dominios `.local`, reservados para los clientes sintéticos. Las reglas impiden que el superadministrador cree otro superadministrador o que un administrador del negocio use este formulario.
 
 ### 6. Desplegar reglas e índices
 
@@ -239,7 +252,8 @@ La app activa App Check solo si se compiló con `RECAPTCHA_SITE_KEY`; sin esa va
 2. Pestaña **Plataforma**: muestra si la prueba está activa o vencida, los días restantes, la fecha local y el valor UTC exacto.
 3. Fija una fecha y hora con el selector, o usa los botones **+7 / +15 / +30 / +90 días**.
 4. **Guardar fecha** aplica el cambio al instante; **Sin límite** elimina el vencimiento.
-5. La barra superior muestra un chip con el tiempo restante que lleva directo a la pestaña.
+5. En **Administradores de negocio**, crea cuentas adicionales para los encargados del negocio y consulta las existentes.
+6. La barra superior muestra un chip con el tiempo restante que lleva directo a la pestaña.
 
 Además puede usar todas las pestañas del administrador del negocio.
 
@@ -342,7 +356,7 @@ El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` (o como U
 
 ### `admins/{uid}`
 
-`email`, `displayName`, `role`, `createdAt`, `updatedAt`. Determina el rol: `superadmin` para el dueño de la plataforma; cualquier otro valor (o la ausencia de `role`) es administrador del negocio.
+`email`, `displayName`, `role`, `createdAt`, `updatedAt`. Determina el rol: `superadmin` para el dueño de la plataforma; cualquier otro valor (o la ausencia de `role`) es administrador del negocio. Los administradores creados desde la app siempre guardan `role: "admin"`.
 
 ---
 
@@ -357,7 +371,7 @@ El logo se guarda como `data:image/...;base64,...` dentro de `logoUrl` (o como U
 - `rate_limits`: el cliente solo incrementa su contador (máximo 10) o lo reinicia al pasar 24 horas.
 - `visits`: lectura del propio cliente o del admin; escritura solo admin.
 - `redemptions`: lectura solo admin; escritura solo admin.
-- `admins`: cada usuario solo puede comprobar su propio documento; listar y escribir está prohibido.
+- `admins`: cada usuario puede comprobar su propio documento. Solo el superadministrador puede listarlos y crear/admin documentos con `role: "admin"` (con correo y nombre no vacíos y marcas de tiempo del servidor). No puede crear superadministradores, ni borrar o modificar su propia cuenta ni la de otro superadministrador; un administrador del negocio no puede listar ni escribir en esta colección.
 
 > La lectura pública de `config` expone también `checkinCode`. El código no es un secreto criptográfico: el QR se muestra públicamente en el mostrador y el sello siempre requiere aprobación humana. El riesgo se limita a solicitudes de spam, que están limitadas por autenticación, rate limit y anti-duplicado.
 
@@ -450,6 +464,8 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 | Error de índice compuesto | Los índices aún se están creando | Despliega `firestore:indexes` y espera unos minutos |
 | La prueba se bloquea antes de tiempo | `config/main.trialExpiryAt` vencido | Entra con el superadministrador y renuévala en la pestaña **Plataforma** |
 | El administrador no ve la pestaña **Plataforma** | `admins/{uid}.role` no es `superadmin` | Corrige el campo en Firestore y vuelve a iniciar sesión |
+| “Ya existe una cuenta con ese correo” al crear un admin | El correo ya está en Firebase Auth | Usa otro correo o restablece la contraseña de esa cuenta desde la consola |
+| “No se pudo crear el administrador” | Reglas desplegadas desactualizadas o sesión sin rol `superadmin` | Despliega `firestore:rules` y comprueba `admins/{uid}.role` |
 | “El negocio alcanzó su límite de usuarios” | `config/main.maxUsers` alcanzado | Súbelo desde el panel de administración |
 | “Ese nombre de usuario ya está en uso” | Ya existe la cuenta o el perfil | Prueba otro usuario; revisa Auth/Firestore |
 | El logo no se guarda | La imagen supera 600 KB tras reducirla | Usa un logo más pequeño o una URL externa |
@@ -476,6 +492,7 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 - Las credenciales ya no viven en el repositorio: `lib/firebase_options.dart` las lee por `String.fromEnvironment` y `firebase.web.json` (ignorado por git) las inyecta con `--dart-define-from-file`. El CI usa la plantilla.
 - El rol de plataforma se guarda en `admins/{uid}.role = "superadmin"` y no en claims: así se puede cambiar desde la consola sin volver a iniciar sesión ni desplegar Functions. Los documentos sin `role` siguen siendo administradores del negocio.
 - La prueba pasó de Remote Config a Firestore (`config/main.trialExpiryAt`) para que el superadministrador pueda renovarla en caliente. Las reglas solo permiten tocar los campos `trial*` al superadministrador, y `AuthGate` escucha `config/main` para desbloquear la app en tiempo real.
+- El alta de administradores adicionales no usa Cloud Functions: se crea la cuenta con una app secundaria de Firebase Auth (para conservar la sesión del superadministrador) y luego se escribe `admins/{uid}` con esa sesión. Si falla el documento, se intenta borrar la cuenta creada. Las reglas bloquean la escalada a `superadmin` y la auto-modificación.
 
 ---
 

@@ -312,9 +312,34 @@ service cloud.firestore {
     }
 
     // Cada usuario solo puede comprobar si él mismo es administrador.
+    // El superadministrador da de alta admins de negocio, los lista y los
+    // gestiona. No puede crear otro superadmin ni borrar o degradar su cuenta.
     match /admins/{adminId} {
-      allow get: if isSelf(adminId);
-      allow list, write: if false;
+      allow get: if isSelf(adminId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
+
+      allow create: if isSuperAdmin()
+        && adminId != request.auth.uid
+        && request.resource.data.role == 'admin'
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 0
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isSuperAdmin()
+        && adminId != request.auth.uid
+        && resource.data.role != 'superadmin'
+        && request.resource.data.role == 'admin'
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.displayName == resource.data.displayName
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isSuperAdmin()
+        && adminId != request.auth.uid
+        && resource.data.role != 'superadmin';
     }
   }
 }

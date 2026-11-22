@@ -7,6 +7,7 @@ import '../../services/backend_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/trial.dart';
 import '../../widgets/app_animations.dart';
+import 'admins_section.dart';
 
 /// Pestaña exclusiva del superadministrador para consultar y renovar la prueba.
 class PlatformTab extends StatefulWidget {
@@ -449,6 +450,8 @@ class _PlatformTabState extends State<PlatformTab> {
               delay: const Duration(milliseconds: 120),
               child: _InfoCard(color: _config.color),
             ),
+            const SizedBox(height: 16),
+            AdminsSection(color: _config.color),
           ],
         ),
       ),

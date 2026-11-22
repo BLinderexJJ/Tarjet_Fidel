@@ -32,9 +32,9 @@
 - Correo y contraseña reales.
 - El rol se determina por el documento `admins/{uid}`; no se usan claims.
 - Un documento sin `role` se considera administrador del negocio.
-- No hay registro de administradores en la interfaz.
+- El primer administrador se crea desde la consola; los adicionales los da de alta el superadministrador desde **Plataforma**.
 - El administrador puede pedir un enlace de restablecimiento de contraseña desde el login; los clientes no reciben correo porque usan un correo sintético.
-- No puede modificar la fecha de la prueba.
+- No puede modificar la fecha de la prueba ni crear otros administradores.
 
 ### Superadministrador
 
@@ -42,7 +42,9 @@
 - Tiene todas las funciones del administrador del negocio y una pestaña adicional, **Plataforma**.
 - Puede entrar al panel aunque la prueba esté vencida para poder renovarla.
 - Desde **Plataforma** consulta el estado, la fecha local, el valor UTC y el tiempo restante; puede fijar fecha/hora, sumar +7/+15/+30/+90 días o quitar el límite.
-- Solo él puede escribir los campos `trial*` de `config/main`.
+- Desde **Plataforma → Administradores de negocio** crea cuentas adicionales con correo real (se rechazan `.local`), nombre visible y contraseña de al menos 8 caracteres con letras y números.
+- El alta usa una app secundaria de Firebase Auth para no cerrar su sesión; si falla el documento `admins/{uid}`, se elimina la cuenta creada.
+- Solo él puede escribir los campos `trial*` de `config/main` y gestionar la colección `admins`, siempre con `role: "admin"`.
 
 ### Cliente
 
@@ -127,7 +129,7 @@
 - `pending_requests`: el cliente crea la suya; el admin la borra al resolver.
 - `rate_limits`: el cliente solo incrementa hasta 10 o reinicia la ventana al pasar 24 horas.
 - `visits` y `redemptions`: escritura solo admin; lectura del propio cliente o del admin (redemptions solo admin).
-- `admins`: cada usuario solo comprueba su propio documento.
+- `admins`: cada usuario comprueba su propio documento; solo el superadmin los lista y crea/edita/borra admins con `role: "admin"`, sin poder crear superadmins ni tocar su propia cuenta.
 
 > `getAfter()` es obligatorio para comprobar escrituras de la misma transacción: `exists()` y `get()` no ven los cambios aún no confirmados.
 
@@ -251,12 +253,22 @@
 - [x] Pruebas de `trial.dart`, `ConfigModel.trialExpiry` y modelos (34 en total)
 - [x] Crear la cuenta real del superadministrador y verificar el login y la renovación en producción (REST: login, rol, escritura de prueba y bloqueo al admin del negocio)
 
+### Fase 11: Alta de administradores de negocio por el superadministrador
+
+- [x] `AdminAccount` y `AdminRole` para el modelo y la distinción de roles
+- [x] Validadores de correo real (sin `.local`), nombre visible y contraseña
+- [x] `AdminManagementService` con app secundaria de Auth, rollback y traducción de errores
+- [x] Sección **Administradores de negocio** en la pestaña **Plataforma** con formulario y listado en tiempo real
+- [x] Reglas de `admins`: crear/listar/actualizar/borrar solo superadmin, sin escalada a `superadmin` ni auto-modificación
+- [x] Pruebas de validación (6 nuevas; 40 en total)
+- [x] Verificación REST en producción: 7/7 comprobaciones correctas y limpieza de documentos temporales
+
 ## Estado de implementación
 
 Verificado y desplegado:
 
 - `flutter analyze` → sin incidencias.
-- `flutter test` → 34 pruebas superadas (modelos, códigos, fechas de prueba, animaciones y accesibilidad).
+- `flutter test` → 40 pruebas superadas (modelos, códigos, fechas de prueba, validación de admins, animaciones y accesibilidad).
 - `flutter build web --release --no-wasm-dry-run --dart-define-from-file=firebase.web.json` → compilación correcta.
 - Proyecto Firebase de referencia creado y app web registrada.
 - Credenciales reales en `firebase.web.json` (ignorado por git); `lib/firebase_options.dart` las lee por `dart-define`.
@@ -275,6 +287,14 @@ Superadministrador y prueba:
 - Las reglas protegen los campos `trial*` y `saveConfig` los elimina del guardado normal del negocio.
 - El superadministrador entra al panel aunque la prueba esté vencida.
 - Cuenta de superadministrador creada y verificada por REST: login, `role: "superadmin"`, lectura de `config/main`, escritura de `trial*` permitida y escritura de `trial*` denegada al administrador del negocio.
+
+Alta de administradores:
+
+- El superadministrador crea administradores de negocio desde **Plataforma → Administradores de negocio**; la sesión privilegiada no se pierde porque la cuenta de Auth se crea en una app secundaria.
+- Los correos `.local` se rechazan en el formulario para no confundir admins con clientes sintéticos; la contraseña exige letras y números.
+- Si falla la escritura de `admins/{uid}`, se intenta borrar la cuenta de Auth creada y se muestra el error traducido al usuario.
+- Las reglas de `admins` permiten al superadmin crear/listar/editar/borrar solo cuentas `role: "admin"`; le impiden crear superadmins, borrar su propio documento y modificar otros superadmins. El admin del negocio no puede listar ni escribir en `admins`.
+- Verificación REST en producción (7/7): crear admin, leerlo, actualizarlo y borrarlo como superadmin → permitido; crear admin o listar como negocio → denegado; crear superadmin o borrar la propia cuenta → denegado. Los documentos temporales se eliminaron.
 
 Mejoras de interfaz y accesibilidad:
 
@@ -316,3 +336,4 @@ Pendiente (opcional):
 10. `functions/` se conserva como referencia opcional del backend original, pero no se despliega ni es necesario.
 11. El rol de plataforma vive en `admins/{uid}.role = "superadmin"` en lugar de claims, para poder cambiarlo desde la consola sin redeploy ni re-login forzado.
 12. La prueba pasó de Remote Config a Firestore (`config/main.trialExpiryAt`) para que el superadministrador pueda renovarla en caliente; Remote Config queda como respaldo.
+13. El alta de administradores adicionales se hace sin Cloud Functions: app secundaria de Auth para crear la cuenta + escritura privilegiada de `admins/{uid}` con rollback. Las reglas impiden la escalada de roles.
