@@ -143,30 +143,30 @@ class LoyaltyCard extends StatelessWidget {
                       '$stamps',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 44,
+                        fontSize: 32,
                         height: 1,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 6, left: 6),
+                      padding: const EdgeInsets.only(bottom: 4, left: 6),
                       child: Text(
                         '/ $goal sellos',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 16,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
                     const Spacer(),
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: 6),
                       child: Text(
                         '${(progress * 100).round()}%',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 14,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -185,8 +185,8 @@ class LoyaltyCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(999),
                       child: LinearProgressIndicator(
                         value: value,
-                        minHeight: 10,
-                        backgroundColor: Colors.white.withValues(alpha: 0.20),
+                        minHeight: 6,
+                        backgroundColor: Colors.white.withValues(alpha: 0.16),
                         valueColor: const AlwaysStoppedAnimation<Color>(
                           Colors.white,
                         ),
@@ -195,52 +195,123 @@ class LoyaltyCard extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 20),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    const spacing = 10.0;
-                    const wantedSize = 52.0;
-                    final available = constraints.maxWidth.isFinite
-                        ? constraints.maxWidth
-                        : wantedSize * 5;
-                    final perRow =
-                        ((available + spacing) / (wantedSize + spacing))
-                            .floor()
-                            .clamp(1, goal)
-                            .toInt();
-                    final size = ((available - spacing * (perRow - 1)) / perRow)
-                        .clamp(32.0, wantedSize)
-                        .toDouble();
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.20),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.16),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.stars_rounded,
+                              size: 14,
+                              color: Colors.white.withValues(alpha: 0.85),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'TUS SELLOS',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '$stamps de $goal',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.65),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const spacing = 10.0;
+                          const maxSize = 64.0;
+                          const minSize = 34.0;
+                          final available = constraints.maxWidth.isFinite
+                              ? constraints.maxWidth
+                              : maxSize * 5;
 
-                    return Wrap(
-                      spacing: spacing,
-                      runSpacing: spacing,
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: List.generate(goal, (index) {
-                        final filled = index < stamps;
-                        final isLastFilled = filled && index == stamps - 1;
-                        Widget stamp = _Stamp(
-                          filled: filled,
-                          index: index + 1,
-                          size: size,
-                          imageSource: config.stampImage,
-                          accent: dark,
-                        );
-                        if (animateStamps && isLastFilled && !reduceMotion) {
-                          stamp = stamp
-                              .animate()
-                              .scale(
-                                begin: const Offset(0.3, 0.3),
-                                end: const Offset(1, 1),
-                                duration: 450.ms,
-                                curve: Curves.elasticOut,
-                              )
-                              .fadeIn(duration: 200.ms);
-                        }
-                        return stamp;
-                      }),
-                    );
-                  },
+                          // Si caben todos en una fila a un tamaño cómodo,
+                          // se muestran juntos; si no, se reparten en filas.
+                          final oneRowSize =
+                              (available - spacing * (goal - 1)) / goal;
+                          final int perRow;
+                          final double size;
+                          if (oneRowSize >= 44) {
+                            perRow = goal;
+                            size = oneRowSize.clamp(minSize, maxSize);
+                          } else {
+                            perRow =
+                                ((available + spacing) / (maxSize + spacing))
+                                    .floor()
+                                    .clamp(1, goal)
+                                    .toInt();
+                            size =
+                                ((available - spacing * (perRow - 1)) / perRow)
+                                    .clamp(minSize, maxSize)
+                                    .toDouble();
+                          }
+
+                          return Wrap(
+                            spacing: spacing,
+                            runSpacing: spacing,
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: List.generate(goal, (index) {
+                              final filled = index < stamps;
+                              final isLastFilled =
+                                  filled && index == stamps - 1;
+                              Widget stamp = _Stamp(
+                                filled: filled,
+                                index: index + 1,
+                                size: size,
+                                imageSource: config.stampImage,
+                                accent: dark,
+                              );
+                              if (animateStamps &&
+                                  isLastFilled &&
+                                  !reduceMotion) {
+                                stamp = stamp
+                                    .animate()
+                                    .scale(
+                                      begin: const Offset(0.3, 0.3),
+                                      end: const Offset(1, 1),
+                                      duration: 450.ms,
+                                      curve: Curves.elasticOut,
+                                    )
+                                    .fadeIn(duration: 200.ms);
+                              }
+                              return stamp;
+                            }),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -250,7 +321,7 @@ class LoyaltyCard extends StatelessWidget {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
@@ -351,19 +422,23 @@ class _Stamp extends StatelessWidget {
               shape: BoxShape.circle,
               color: filled
                   ? Colors.white
-                  : Colors.white.withValues(alpha: 0.12),
+                  : Colors.white.withValues(alpha: 0.08),
               border: Border.all(
                 color: filled
                     ? Colors.white
-                    : Colors.white.withValues(alpha: 0.55),
-                width: filled ? 2.5 : 1.5,
+                    : Colors.white.withValues(alpha: 0.45),
+                width: filled ? 3 : 1.5,
               ),
               boxShadow: filled
                   ? [
                       BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+                        color: accent.withValues(alpha: 0.65),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.45),
+                        blurRadius: 6,
                       ),
                     ]
                   : null,
@@ -383,14 +458,14 @@ class _Stamp extends StatelessWidget {
                       child: filled
                           ? Icon(
                               Icons.check_rounded,
-                              size: size * 0.56,
+                              size: size * 0.58,
                               color: checkColor,
                             )
                           : Text(
                               '$index',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontSize: size * 0.36,
+                                color: Colors.white.withValues(alpha: 0.7),
+                                fontSize: size * 0.38,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),

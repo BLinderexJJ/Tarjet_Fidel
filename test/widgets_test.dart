@@ -199,6 +199,18 @@ void main() {
       expect(find.byType(Image), findsNothing);
     });
 
+    testWidgets('los sellos tienen panel propio y tamaño destacado', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(card(stampImage: '', stamps: 2), reduceMotion: true),
+      );
+
+      expect(find.text('TUS SELLOS'), findsOneWidget);
+      final size = tester.getSize(find.byKey(const Key('stamp_1')));
+      expect(size.width, greaterThanOrEqualTo(44));
+    });
+
     testWidgets('no anima los sellos con movimiento reducido', (tester) async {
       await tester.pumpWidget(
         _host(card(stampImage: '', animate: true), reduceMotion: true),

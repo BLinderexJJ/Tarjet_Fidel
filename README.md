@@ -263,7 +263,7 @@ Además puede usar todas las pestañas del administrador del negocio.
 2. Escanea el QR del negocio o introduce el código manualmente.
 3. Se crea una solicitud pendiente; el mensaje confirma que debe esperar la aprobación.
 4. Cuando el administrador aprueba, los sellos aparecen animados en tiempo real. Si el negocio configuró una imagen de sello, los sellos válidos la muestran con una palomita verde encima; si no, muestran el icono de check.
-5. Los sellos se adaptan al ancho de la pantalla (hasta 52 px) para que se vean mejor: los válidos son blancos con borde grueso y brillo, y los pendientes llevan su número.
+5. Los sellos son el elemento protagonista: tienen su propio panel oscuro con la etiqueta **TUS SELLOS**, crecen hasta 64 px según el ancho y los válidos son blancos con borde grueso, brillo de color y la imagen configurada (o el check). El contador, la barra de progreso y el premio se atenuaron para no competir con ellos.
 6. Al completar la meta, la tarjeta muestra el premio listo.
 
 ### Recuperar la contraseña del administrador
