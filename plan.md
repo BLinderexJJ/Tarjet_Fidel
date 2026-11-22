@@ -278,12 +278,23 @@
 - [x] Animación del último sello respetando `MediaQuery.disableAnimations`
 - [x] Pruebas del modelo y del render con/sin imagen, panel propio y tamaño (5 nuevas; 45 en total)
 
+### Fase 13: Optimización de rendimiento y caché
+
+- [x] `FirestoreService` es singleton y `configStream()` compartido: una sola suscripción real a `config/main` aunque lo escuchen varias pantallas, con replay del último valor
+- [x] Caché LRU (8 entradas) de los bytes de imágenes `data:`; antes se decodificaban en cada `build`, hasta una vez por sello
+- [x] Regenerar el QR usa `update()` de un solo campo en vez de reescribir el documento con las imágenes
+- [x] `saveConfig` compara con el último valor conocido y escribe solo los campos cambiados; nunca toca los campos `trial*`
+- [x] `AdminsSection` crea su stream una sola vez y `AdminScreen` reutiliza las páginas del panel
+- [x] `firebase.json` sirve los archivos de entrada con `no-cache` y cachea `canvaskit/`, `icons/` y `assets/`; evita ver una versión antigua tras desplegar
+- [x] `cupertino_icons` se conserva porque el framework lo referencia; el tree-shaking deja la fuente en ~1,5 KB y el build sale sin advertencias
+- [x] 5 pruebas nuevas (caché de imágenes y escrituras parciales; 50 en total)
+
 ## Estado de implementación
 
 Verificado y desplegado:
 
 - `flutter analyze` → sin incidencias.
-- `flutter test` → 45 pruebas superadas (modelos, códigos, fechas de prueba, validación de admins, animaciones, accesibilidad y render de sellos).
+- `flutter test` → 50 pruebas superadas (modelos, códigos, fechas de prueba, validación de admins, animaciones, accesibilidad, render de sellos, caché de imágenes y escrituras parciales).
 - `flutter build web --release --no-wasm-dry-run --dart-define-from-file=firebase.web.json` → compilación correcta.
 - Proyecto Firebase de referencia creado y app web registrada.
 - Credenciales reales en `firebase.web.json` (ignorado por git); `lib/firebase_options.dart` las lee por `dart-define`.
@@ -318,6 +329,14 @@ Imagen del sello:
 - El selector reduce la imagen a 192 px y rechaza más de 160 KB. El guardado comprueba que logo + sello no pasen de 900 KB codificados, con un margen seguro bajo el límite de 1 MiB de Firestore.
 - Los sellos tienen su propio panel oscuro con la etiqueta **TUS SELLOS** y crecen hasta 64 px según el ancho disponible, con borde más grueso, brillo de color y contraste alto; en móvil se distribuyen en varias filas. El contador, la barra de progreso y el recuadro del premio se atenuaron para que nada compita con los sellos.
 - La palomita y el "pop" del último sello respetan el movimiento reducido; las etiquetas semánticas indican «Sello N válido/pendiente».
+
+Optimización de rendimiento:
+
+- Todas las pantallas comparten una única suscripción a `config/main`; al entrar en una pantalla se recibe de inmediato el último valor conocido.
+- El mismo base64 del logo o del sello se decodifica una sola vez y se reutiliza en todos los sellos y reconstrucciones; la caché conserva 8 imágenes.
+- Cambiar el código de check-in no reescribe el documento de configuración completo.
+- Los streams y las páginas del panel de administración se reutilizan en lugar de recrearse en cada reconstrucción.
+- Hosting envía `no-cache` para los archivos de entrada, de modo que un despliegue nuevo se ve en cuanto se recarga.
 
 Mejoras de interfaz y accesibilidad:
 

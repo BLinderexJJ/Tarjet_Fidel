@@ -36,7 +36,7 @@ class _QrTabState extends State<QrTab> {
     _notify('Código copiado: ${config.checkinCode}');
   }
 
-  Future<void> _regenerate(ConfigModel config) async {
+  Future<void> _regenerate() async {
     if (_saving) return;
 
     final confirmed = await showDialog<bool>(
@@ -65,7 +65,7 @@ class _QrTabState extends State<QrTab> {
     setState(() => _saving = true);
     try {
       final code = generateCheckinCode();
-      await _firestore.saveConfig(config.copyWith(checkinCode: code));
+      await _firestore.updateConfigField('checkinCode', code);
       _notify('Nuevo código generado: $code');
     } catch (_) {
       _notify('No se pudo generar el código. Inténtalo de nuevo.');
@@ -176,7 +176,7 @@ class _QrTabState extends State<QrTab> {
                               FilledButton.icon(
                                 onPressed: !loaded || _saving
                                     ? null
-                                    : () => _regenerate(config),
+                                    : _regenerate,
                                 icon: _saving
                                     ? const SizedBox(
                                         width: 16,

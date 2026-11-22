@@ -19,6 +19,7 @@ class AdminsSection extends StatefulWidget {
 
 class _AdminsSectionState extends State<AdminsSection> {
   final AdminManagementService _service = AdminManagementService();
+  late final Stream<List<AdminAccount>> _adminStream = _service.adminStream();
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
@@ -263,7 +264,7 @@ class _AdminsSectionState extends State<AdminsSection> {
               ),
               const SizedBox(height: 8),
               StreamBuilder<List<AdminAccount>>(
-                stream: _service.adminStream(),
+                stream: _adminStream,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Padding(

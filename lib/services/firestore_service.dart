@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -12,13 +14,21 @@ import '../models/user_model.dart';
 /// canjes) viven en `BackendService`; aquí solo hay lecturas en tiempo real y
 /// la edición de la configuración.
 class FirestoreService {
-  FirestoreService({FirebaseFirestore? db})
-    : _db =
-          db ??
-          FirebaseFirestore.instanceFor(
-            app: Firebase.app(),
-            databaseId: AppConfig.firestoreDatabaseId,
-          );
+  /// Todas las pantallas comparten la misma instancia para que el stream de
+  /// configuración (un documento con imágenes base64) se escuche una sola vez.
+  factory FirestoreService({FirebaseFirestore? db}) {
+    if (db != null) return FirestoreService._(db);
+    return _instance ??= FirestoreService._(
+      FirebaseFirestore.instanceFor(
+        app: Firebase.app(),
+        databaseId: AppConfig.firestoreDatabaseId,
+      ),
+    );
+  }
+
+  FirestoreService._(this._db);
+
+  static FirestoreService? _instance;
 
   final FirebaseFirestore _db;
 
@@ -29,10 +39,58 @@ class FirestoreService {
   // Configuración
   // ---------------------------------------------------------------------------
 
+  StreamSubscription<ConfigModel>? _configSubscription;
+  ConfigModel? _lastConfig;
+  final List<StreamController<ConfigModel>> _configListeners = [];
+
+  /// Stream compartido de `config/main`.
+  ///
+  /// Cada pantalla que lo consume recibe el último valor conocido al
+  /// suscribirse (igual que hacía `snapshots()`), pero solo existe una
+  /// suscripción real a Firestore mientras haya algún oyente.
   Stream<ConfigModel> configStream() {
-    return _configRef.snapshots().map(
-      (snapshot) => ConfigModel.fromDoc(snapshot.data()),
-    );
+    return Stream<ConfigModel>.multi((listener) {
+      final firstListener = _configSubscription == null;
+      final last = _lastConfig;
+      if (!firstListener && last != null) listener.add(last);
+      _configListeners.add(listener);
+
+      if (firstListener) {
+        _configSubscription = _configRef
+            .snapshots()
+            .map((snapshot) => ConfigModel.fromDoc(snapshot.data()))
+            .listen(
+              (config) {
+                _lastConfig = config;
+                for (final target in List<StreamController<ConfigModel>>.of(
+                  _configListeners,
+                )) {
+                  if (!target.isClosed) target.add(config);
+                }
+              },
+              onError: (Object error, StackTrace stack) {
+                for (final target in List<StreamController<ConfigModel>>.of(
+                  _configListeners,
+                )) {
+                  if (!target.isClosed) target.addError(error, stack);
+                }
+              },
+            );
+      }
+
+      listener.onCancel = () {
+        _configListeners.remove(listener);
+        if (_configListeners.isEmpty) {
+          _configSubscription?.cancel();
+          _configSubscription = null;
+        }
+      };
+    });
+  }
+
+  /// Actualiza un único campo de la configuración sin reescribir las imágenes.
+  Future<void> updateConfigField(String field, Object? value) {
+    return _configRef.update(<String, dynamic>{field: value});
   }
 
   Future<ConfigModel> getConfig() async {
@@ -42,15 +100,14 @@ class FirestoreService {
 
   Future<void> saveConfig(ConfigModel config) {
     // La fecha de prueba solo la cambia el superadministrador desde la
-    // pestaña Plataforma. El administrador del negocio puede guardar el resto
-    // de la configuración sin tocar los campos `trial*`.
-    final data = config.toMap()
-      ..remove('trialExpiryDate')
-      ..remove('trialExpiryAt')
-      ..remove('trialUpdatedAt')
-      ..remove('trialUpdatedBy');
-
-    return _configRef.set(data, SetOptions(merge: true));
+    // pestaña Plataforma. `changesFrom` excluye los campos `trial*` y evita
+    // reescribir las imágenes en base64 si no cambiaron.
+    final changes = config.changesFrom(_lastConfig);
+    if (changes.isEmpty) return Future.value();
+    if (_lastConfig == null) {
+      return _configRef.set(changes, SetOptions(merge: true));
+    }
+    return _configRef.update(changes);
   }
 
   /// Renueva o fija la fecha de expiración de la prueba.

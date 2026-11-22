@@ -64,7 +64,7 @@ tarjet_fidel/
 │  │  └─ logo_service.dart          Selectores de logo y sello, conversión a base64
 │  ├─ screens/                      Acceso, cliente, admin, plataforma (con alta de admins) y bloqueo de prueba
 │  ├─ widgets/                      Tarjeta, QR, escáner, animaciones y confeti
-│  └─ utils/                        Códigos, fechas de prueba, validación de admins y metadatos del navegador
+│  └─ utils/                        Códigos, fechas de prueba, validación de admins, caché de imágenes y metadatos del navegador
 ├─ tool/configure_firebase.mjs      Asistente de credenciales por negocio
 ├─ .github/workflows/flutter.yml    CI: analyze + test + build web
 ├─ firebase.web.example.json        Plantilla sin credenciales
@@ -454,6 +454,14 @@ firebase emulators:start
 
 La app no está conectada a los emuladores por defecto. Si quieres usarlos, añade en `lib/main.dart` las llamadas `useFirestoreEmulator` y `useAuthEmulator` antes de `runApp`, y usa `--dart-define` para no incluirlas en producción.
 
+## Rendimiento y caché
+
+- `FirestoreService` es un singleton y `configStream()` es un stream compartido: aunque varias pantallas escuchen la configuración, solo existe **una suscripción real** a `config/main`. Los nuevos oyentes reciben el último valor conocido.
+- Los bytes de las imágenes `data:` se decodifican una sola vez y se cachean en `lib/utils/image_cache.dart` (máximo 8 entradas). Antes se decodificaban en cada `build`, con hasta una imagen por sello.
+- La pestaña de QR actualiza solo `checkinCode` con `update()`, y `saveConfig` escribe únicamente los campos que cambiaron; ninguno de los dos reenvía las imágenes en base64.
+- `AdminsSection` crea su stream una sola vez, y `AdminScreen` reutiliza las páginas en vez de recrearlas en cada snapshot.
+- `firebase.json` sirve los archivos de entrada (`index.html`, `main.dart.js`, `flutter_bootstrap.js`, etc.) con `Cache-Control: no-cache`, para que un despliegue nuevo se vea en cuanto se recarga. Los recursos de `canvaskit/` e `icons/` se cachean una semana y los de `assets/`, un día.
+
 ---
 
 ## Solución de problemas
@@ -476,6 +484,7 @@ La app no está conectada a los emuladores por defecto. Si quieres usarlos, aña
 | El admin no ve el panel | Falta `admins/{uid}` | Créalo con el UID correcto y vuelve a iniciar sesión |
 | `403 This API method requires billing` al desplegar Firestore | Firebase intenta crear `(default)` | Mantén `firestore.database` en `firebase.json` (base con nombre `default`) |
 | El despliegue apunta a otro proyecto | La CLI ignora `.firebaserc` | Añade `--project tu-proyecto-firebase` |
+| Después de desplegar se ve la interfaz anterior | Caché del navegador | Recarga forzada (`Ctrl + Shift + R`) o borra los datos del sitio; los headers `no-cache` ya evitan que vuelva a pasar |
 
 ---
 

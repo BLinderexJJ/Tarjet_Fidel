@@ -59,7 +59,7 @@ class _AdminScreenState extends State<AdminScreen> {
     ),
   ];
 
-  List<NavigationDestination> get _destinations => [
+  List<NavigationDestination> _buildDestinations() => [
     ..._baseDestinations,
     if (_isSuperAdmin)
       const NavigationDestination(
@@ -68,6 +68,20 @@ class _AdminScreenState extends State<AdminScreen> {
         label: 'Plataforma',
       ),
   ];
+
+  // Las pestañas mantienen su estado (AnimatedIndexedStack), así que no hace
+  // falta volver a crearlas cada vez que llega un snapshot de configuración.
+  late List<NavigationDestination> _destinations = _buildDestinations();
+  late List<Widget> _pages = _buildPages();
+
+  @override
+  void didUpdateWidget(AdminScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.role != widget.role) {
+      _destinations = _buildDestinations();
+      _pages = _buildPages();
+    }
+  }
 
   List<Widget> _buildPages() => [
     const RequestsTab(),
@@ -88,7 +102,7 @@ class _AdminScreenState extends State<AdminScreen> {
       builder: (context, snapshot) {
         final config = snapshot.data ?? ConfigModel.defaults();
         final destinations = _destinations;
-        final pages = _buildPages();
+        final pages = _pages;
         final index = _index < destinations.length ? _index : 0;
         final trialActive = trialIsActive(config.trialExpiry);
 

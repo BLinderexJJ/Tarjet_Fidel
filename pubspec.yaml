@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # El framework referencia CupertinoIcons; sin él el build web avisa de una
+  # fuente ausente aunque la app no use widgets de Cupertino.
   cupertino_icons: ^1.0.8
 
   # Firebase

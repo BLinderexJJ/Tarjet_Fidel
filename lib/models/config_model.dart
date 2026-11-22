@@ -76,6 +76,21 @@ class ConfigModel {
     };
   }
 
+  /// Solo los campos que difieren de [previous], sin los campos de prueba.
+  ///
+  /// `config/main` puede pesar casi 1 MiB por las imágenes en base64. Escribir
+  /// solo lo que cambió evita reenviarlas cuando se edita un texto.
+  Map<String, dynamic> changesFrom(ConfigModel? previous) {
+    final current = toMap()..remove('trialExpiryDate');
+    if (previous == null) return current;
+
+    final old = previous.toMap();
+    return {
+      for (final entry in current.entries)
+        if (old[entry.key] != entry.value) entry.key: entry.value,
+    };
+  }
+
   ConfigModel copyWith({
     String? businessName,
     String? logoUrl,

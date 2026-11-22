@@ -47,6 +47,29 @@ void main() {
       );
     });
 
+    test('changesFrom solo devuelve los campos modificados', () {
+      const previous = ConfigModel(
+        businessName: 'Café Sol',
+        logoUrl: 'data:image/png;base64,AAAA',
+        stampsGoal: 8,
+        rewardDescription: 'Premio',
+        themeColor: '#10B981',
+        maxUsers: 50,
+        checkinCode: 'AB12CD',
+        contactInfo: 'hola',
+        trialExpiryDate: '2026-11-27T23:59:59Z',
+      );
+      final updated = previous.copyWith(businessName: 'Café Luna');
+
+      expect(updated.changesFrom(previous), {'businessName': 'Café Luna'});
+      expect(previous.changesFrom(previous), isEmpty);
+      expect(
+        previous.changesFrom(null).containsKey('trialExpiryDate'),
+        isFalse,
+      );
+      expect(previous.changesFrom(null)['logoUrl'], isNotEmpty);
+    });
+
     test('no lanza con un color inválido', () {
       final config = ConfigModel.fromMap(const {'themeColor': 'no-es-color'});
       expect(config.color, const Color(0xFF4F46E5));
